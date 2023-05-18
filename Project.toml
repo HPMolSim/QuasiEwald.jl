@@ -3,6 +3,15 @@ uuid = "983f8767-50b7-4083-a328-dfb7a9c26de7"
 authors = ["xzgao"]
 version = "1.0.0-DEV"
 
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CellListMap = "69e1c6dd-3888-40e6-b3c8-31ac5f578864"
+GaussQuadrature = "d54b0c1a-921d-58e0-8e36-89d8069c0969"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+
 [compat]
 julia = "1"
 

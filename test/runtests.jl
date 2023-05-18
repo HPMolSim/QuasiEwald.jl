@@ -1,6 +1,7 @@
 using QuasiEwald
 using Test
+using BenchmarkTools
 
 @testset "QuasiEwald.jl" begin
-    # Write your tests here.
+    include("test_Icm.jl")
 end
