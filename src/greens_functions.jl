@@ -1,6 +1,6 @@
 export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2
 
-function Gamma_1(k::T, element::GreensElement; l::Int = 0) where T<:Number
+function Gamma_1(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
     if l == 0
         green_u = sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / 2
     else
@@ -11,7 +11,7 @@ function Gamma_1(k::T, element::GreensElement; l::Int = 0) where T<:Number
     return G_1
 end
 
-function Gamma_2(k::T, element::GreensElement; l::Int = 0) where T<:Number
+function Gamma_2(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
     if l == 0
         green_u = sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2 ,3, 4)) / 2
     else
@@ -24,7 +24,7 @@ end
 
 
 # these functions define the dz_Gamma1/2, which are used to calculate the forces
-function dz_Gamma_1(k::T, element::GreensElement; l::Int = 0) where T<:Number
+function dz_Gamma_1(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
     if l == 0
         dz_green_u = sum(i -> k * element.sign_a[i] * element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / 2
     else
@@ -37,7 +37,7 @@ function dz_Gamma_1(k::T, element::GreensElement; l::Int = 0) where T<:Number
     return dz_G_1
 end
 
-function dz_Gamma_2(k::T, element::GreensElement; l::Int = 0) where T<:Number
+function dz_Gamma_2(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
     if l == 0
         dz_green_u = sum(i -> k * element.sign_a[i] * element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / 2
     else

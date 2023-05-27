@@ -1,7 +1,7 @@
 module QuasiEwald
 
 # these are packages to be used in this package
-using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature
+using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, Distributions, Random, StaticArrays, StatsBase
 
 
 include("types.jl")
