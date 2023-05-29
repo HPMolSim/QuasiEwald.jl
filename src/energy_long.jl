@@ -1,3 +1,5 @@
+export Container, energy_sum_total, energy_sum_sampling, QuasiEwald_El
+
 mutable struct Container{T}
     C1::Vector{T}
     S1::Vector{T}
@@ -12,6 +14,18 @@ mutable struct Container{T}
 end
 
 Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
+
+function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::T_NEIGHBOR, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer, T_NEIGHBOR<:ExTinyMD.AbstractNeighborFinder}
+    update_finder!(neighbor, info)
+    
+    q = [atom.charge for atom in sys.atoms]
+
+    if interaction.rbe == true
+        return energy_sum_sampling(q, info.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
+    else
+        return energy_sum_total(q, info.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+    end
+end
 
 @inbounds function energy_k_sum_0(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
     n_atoms = length(z_list)
@@ -262,6 +276,25 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
                 sum_total += sum_k * exp(- k^2 / (4 * α))
             end
         end
+    end
+
+    return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)
+end
+
+function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
+    n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
+
+    green_element = GreensElement(γ_1, γ_2, L_z, α)
+    container = Container{T}(n_atoms)
+
+    sum_k0 = energy_k_sum_0(q, coords, z_list)
+    sum_total = zero(T)
+
+    for i in 1:rbe_p
+        k_set = K_set[rand(1:size(K_set)[1])]
+        sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container)
+        sum_total += sum_k * S / rbe_p
     end
 
     return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)

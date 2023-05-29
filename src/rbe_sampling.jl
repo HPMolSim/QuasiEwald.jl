@@ -26,6 +26,7 @@ function rbe_sampling(L::NTuple{3, T}, α::T, accuracy::T) where {T <: Number}
         end
     end
     Prob ./= sum_K
+    K_set = sample(K_set, ProbabilityWeights(Prob), 1000)
 
-    return K_set, ProbabilityWeights(Prob), sum_K
+    return K_set, sum_K
 end

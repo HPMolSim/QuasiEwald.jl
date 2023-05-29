@@ -95,11 +95,11 @@ struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     rbe_p::TI
     sum_k::T
     K_set::Vector{NTuple{3, T}}
-    Prob::ProbabilityWeights{T, T, Vector{T}}
+    # Prob::ProbabilityWeights{T, T, Vector{T}}
 end
 
 function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI) where{T<:Number, TI<:Integer}
-    K_set, Prob, sum_k = rbe_sampling(L, α, accuracy)
+    K_set, sum_k = rbe_sampling(L, α, accuracy)
 
     return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, Prob)
 end
