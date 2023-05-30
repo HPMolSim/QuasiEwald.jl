@@ -26,21 +26,21 @@ sys = MDSys(
 γ_2 = - 0.0
 ϵ_0 = 1.0
 accuracy = 1e-4
-α = 1.0
-n_t = 60
+α = 0.5
+n_t = 100
 
 Es = []
-rc_array = 1.0:.1:10.0
+rc_array = 1.0:.5:10.0
 for r_c in rc_array
     cellq2d = CellListDirQ2D(info, r_c, boundary, 1)
     interaction_short = QuasiEwaldShortInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, r_c, n_t)
     @show r_c, length(cellq2d.neighbor_list)
     @time push!(Es, QuasiEwald_Es(interaction_short, cellq2d, sys, info))
 end
-plot(rc_array, Es, ylim = (-223.012, -223.011))
+plot(rc_array, Es)
 
 El = []
-kc_array = 1.0:.5:10.0
+kc_array = 1.0:.4:5.0
 sortz = SortingFinder(info.coords)
 for k_c in kc_array
     interaction_long = QuasiEwaldLongInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, k_c, 0)
@@ -48,3 +48,25 @@ for k_c in kc_array
     @time push!(El, QuasiEwald_El(interaction_long, sortz, sys, info))
 end
 plot(kc_array, El)
+
+El[end] + Es[end]
+
+N_real = 100
+N_img = 0
+ICM_sys = IcmSys((γ_2, γ_1), (L, L, 10.0), N_real, N_img)
+ref_pos, ref_charge = IcmSysInit(ICM_sys, info.coords, [atom.charge for atom in atoms])
+energy_jl = IcmEnergy(ICM_sys, info.coords, [atom.charge for atom in atoms], ref_pos, ref_charge)
+
+accuracy = 1e-2
+α = (π^2/(L^4 * log10(1/accuracy) * accuracy^(2/3)) * 18 * n_t / 16 * n_atoms)^0.6
+r_c = (α * accuracy)^(-1/3)
+k_c = sqrt(-4 * α * log(accuracy))
+
+cellq2d = CellListDirQ2D(info, r_c, boundary, 1)
+interaction_short = QuasiEwaldShortInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, r_c, n_t)
+interaction_long = QuasiEwaldLongInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, k_c, 0)
+
+@time Es = QuasiEwald_Es(interaction_short, cellq2d, sys, info)
+@time El = QuasiEwald_El(interaction_long, sortz, sys, info)
+
+Es + El
