@@ -1,6 +1,6 @@
 export IcmSysInit, IcmEnergy, IcmForce
 
-function IcmSysInit(sys::IcmSys, position::Vector{Vector{T}}, charge::Vector{T}) where T <: Number
+function IcmSysInit(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}) where T <: Number
     # @assert sum(charge) == 0
     γ_up = sys.γ[1]
     γ_down = sys.γ[2]
@@ -37,11 +37,11 @@ function IcmSysInit(sys::IcmSys, position::Vector{Vector{T}}, charge::Vector{T})
     return reflect_position, reflect_charge
 end
 
-function IcmEnergy(sys::IcmSys, position::Vector{Vector{T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
+function IcmEnergy(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
     energy = zero(T)
     for i in 1:length(charge)
         q_i = charge[i]
-        pos_i = Point(position[i][1], position[i][2], position[i][3])
+        pos_i = position[i]
         for j in 1:length(reflect_charge)
             q_j = reflect_charge[j]
             pos_j = reflect_position[j]
@@ -58,11 +58,11 @@ function IcmEnergy(sys::IcmSys, position::Vector{Vector{T}}, charge::Vector{T}, 
     return energy
 end
 
-function IcmForce(sys::IcmSys, position::Vector{Vector{T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
+function IcmForce(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
     force = [Point(zero(T), zero(T), zero(T)) for _=1:length(charge)]
     for i in 1:length(charge)
         q_i = charge[i]
-        pos_i = Point(position[i][1], position[i][2], position[i][3])
+        pos_i = position[i]
         for j in 1:length(reflect_charge)
             q_j = reflect_charge[j]
             pos_j = reflect_position[j]

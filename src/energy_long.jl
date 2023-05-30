@@ -15,7 +15,7 @@ end
 
 Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
 
-function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::T_NEIGHBOR, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer, T_NEIGHBOR<:ExTinyMD.AbstractNeighborFinder}
+function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
     update_finder!(neighbor, info)
     
     q = [atom.charge for atom in sys.atoms]
@@ -273,7 +273,7 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
             if k < k_c && k != 0
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container)
-                sum_total += sum_k * exp(- k^2 / (4 * α))
+                sum_total += sum_k * exp(- k*k / (4 * α))
             end
         end
     end

@@ -9,11 +9,11 @@ end
 
 IcmSys(γ::NTuple{2, Float64}, L::NTuple{3, Float64}, N_real::Int, N_img::Int) = IcmSys{Float64, Int}(γ, L, N_real, N_img)
 
-struct GaussParameter{N, T}
-    sw::SVector{N, NTuple{2, T}}
+struct GaussParameter{T}
+    sw::Vector{NTuple{2, T}}
 end
 
-GaussParameter(Step::Int) = GaussParameter{Float64}(SVector{Step, NTuple{2, Float64}}([tuple(legendre(Step)[1][i], legendre(Step)[2][i]) for i in 1:Step]))
+GaussParameter(Step::Int) = GaussParameter{Float64}([tuple(legendre(Step)[1][i], legendre(Step)[2][i]) for i in 1:Step])
 
 struct GreensElement{T}
     γ_1::T
@@ -101,7 +101,7 @@ end
 function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI) where{T<:Number, TI<:Integer}
     K_set, sum_k = rbe_sampling(L, α, accuracy)
 
-    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, Prob)
+    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set)
 end
 
 mutable struct SortingFinder{T, TI} <: ExTinyMD.AbstractNeighborFinder

@@ -4,7 +4,7 @@
     γ_down = - 0.15
 
     L = (1.0, 1.0, 1.0)
-    position = [L .* rand(3) for _=1:N]
+    position = [Point(L[1] * rand(), L[2] * rand(), L[3] * rand()) for _=1:N]
     charge = [(-1.0)^i for i in 1:N]
 
 

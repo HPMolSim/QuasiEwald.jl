@@ -2,7 +2,7 @@ export QuasiEwald_Es, QuaisEwald_Es_pair, QuaisEwald_Es_self, Es_gauss_core, Es_
 
 # the core functions are the integrands
 function Es_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    E_s_g = Gamma_1(k, element; l = l) * exp(- k^2 / (4 * element.α)) * besselj0(k * element.ρ)
+    E_s_g = Gamma_1(k, element; l = l) * exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)
     return E_s_g
 end
 
@@ -11,12 +11,16 @@ function Es_point_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Nu
     return E_s_p
 end
 
-function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor_list::Vector{Tuple{Int64, Int64, T}}, atoms::Vector{Atom{T}}, coords::Vector{Point{3, T}}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
+function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor::CellListDirQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
+
+    neighbor_list = neighbor.neighbor_list
+    atoms = sys.atoms
+    coords = info.coords
 
     energy_short = zero(T)
 
     for (i, j, ρ) in neighbor_list
-        coord_1, coord_2, ρ_sq = position_check3D(coords[i], coords[j], sys.boundary, interaction.cutoff)
+        coord_1, coord_2, ρ_sq = position_checkQ2D(coords[i], coords[j], sys.boundary, interaction.r_c)
         if iszero(ρ_sq)
             nothing
         else
@@ -65,6 +69,6 @@ function QuaisEwald_Es_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para
         Es_gauss = zero(T)
     end
 
-    Es_self = q^2 * (- Es_point_1 + Es_point_2 + Es_gauss) / (4π * ϵ_0)
+    Es_self = q * q * (- Es_point_1 + Es_point_2 + Es_gauss) / (4π * ϵ_0)
     return Es_self
 end
