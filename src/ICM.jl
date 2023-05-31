@@ -76,6 +76,26 @@ function IcmForce(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T},
     return force 
 end
 
+function IcmForce_self(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
+    force_self = [Point(zero(T), zero(T), zero(T)) for _=1:length(charge)]
+    for i in 1:length(charge)
+        q_i = charge[i]
+        pos_i = position[i]
+        for j in 1:length(reflect_charge)
+            q_j = reflect_charge[j]
+            pos_j = reflect_position[j]
+            if pos_j[1] ≈ pos_i[1] && pos_j[2] ≈ pos_i[2]
+                for mx in -sys.N_real:sys.N_real
+                    for my in -sys.N_real:sys.N_real
+                        force_self[i] += CoulumbForce(q_i, q_j, pos_i, pos_j + Point(mx * sys.L[1], my * sys.L[2], 0.0))
+                    end
+                end
+            end
+        end
+    end
+    return force_self 
+end
+
 function CoulumbForce(q_i::T, q_j::T, coo_i::Point{3, T}, coo_j::Point{3, T}) where T<:Number
     r = dist2(coo_i, coo_j)
     if iszero(r) == false

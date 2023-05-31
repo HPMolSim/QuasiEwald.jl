@@ -51,8 +51,8 @@ plot(kc_array, El)
 
 El[end] + Es[end]
 
-N_real = 100
-N_img = 0
+N_real = 0
+N_img = 100
 ICM_sys = IcmSys((γ_2, γ_1), (L, L, 10.0), N_real, N_img)
 ref_pos, ref_charge = IcmSysInit(ICM_sys, info.coords, [atom.charge for atom in atoms])
 energy_jl = IcmEnergy(ICM_sys, info.coords, [atom.charge for atom in atoms], ref_pos, ref_charge)

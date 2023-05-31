@@ -53,7 +53,7 @@ function GreensElement(γ_1::T, γ_2::T, z_i::T, z_j::T, ρ::T, L_z::T, α::T, a
     a = (z_n, z_p, 2 * L_z - z_p, 2 * L_z - z_n)
     b = (1.0, γ_1, γ_2, γ_1 * γ_2)
 
-    sign_a = (zero(T), -one(T), one(T), zero(T))
+    sign_a = (-sign(z_i - z_j), -one(T), one(T), sign(z_i - z_j))
     k_f1 = sqrt.(4 * α^2 .* a.^2 .- 4 * α * log(accuracy)) .- 2 * α .* a
     k_f2 = - log(accuracy) ./ (2 * L_z .+ a)
 

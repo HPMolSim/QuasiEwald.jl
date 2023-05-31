@@ -1,7 +1,7 @@
 export QuasiEwald_Es, QuaisEwald_Es_pair, QuaisEwald_Es_self, Es_gauss_core, Es_point_core
 
 # the core functions are the integrands
-function Es_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
+function Es_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number} 
     E_s_g = Gamma_1(k, element; l = l) * exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)
     return E_s_g
 end
