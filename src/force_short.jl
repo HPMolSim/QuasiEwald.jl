@@ -1,4 +1,4 @@
-export QuasiEwald_Fs!
+export QuasiEwald_Fs!, QuasiEwald_Fs_pair, QuasiEwald_Fs_self
 
 function Fsr_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
     f_sr_g = k * Gamma_1(k, element; l = l) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ)

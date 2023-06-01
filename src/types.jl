@@ -1,4 +1,4 @@
-export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction
+export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, Container, update_container!
 
 struct IcmSys{T, R}
     γ::NTuple{2, T} # (γ_up, γ_down)
@@ -121,5 +121,34 @@ function ExTinyMD.update_finder!(neighborfinder::T_NIEGHBOR, info::SimulationInf
         neighborfinder.z_coords[i] = info.coords[i][3]
     end
     sortperm!(neighborfinder.z_list, neighborfinder.z_coords)
+    return nothing
+end
+
+mutable struct Container{T}
+    C1::Vector{T}
+    S1::Vector{T}
+    C2::Vector{T}
+    S2::Vector{T}
+    COS_list::Vector{T}
+    SIN_list::Vector{T}
+    EXP_list_1::Vector{T}
+    EXP_list_2::Vector{T}
+    EXP_list_3::Vector{T}
+    EXP_list_4::Vector{T}
+end
+
+Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
+
+function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
+    k_x, k_y, k = k_set
+    for i in 1:n_atoms
+        coord = coords[i]
+        container.COS_list[i] = cos(k_x * coord[1] + k_y * coord[2])
+        container.SIN_list[i] = sin(k_x * coord[1] + k_y * coord[2])
+        container.EXP_list_1[i] = exp(k * coord[3])
+        container.EXP_list_2[i] = exp( - k * coord[3])
+        container.EXP_list_3[i] = exp( - k * (2 * L_z - coord[3]))
+        container.EXP_list_4[i] = exp( - k * (L_z - coord[3]))
+    end
     return nothing
 end

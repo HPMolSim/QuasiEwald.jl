@@ -1,19 +1,4 @@
-export Container, energy_sum_total, energy_sum_sampling, QuasiEwald_El
-
-mutable struct Container{T}
-    C1::Vector{T}
-    S1::Vector{T}
-    C2::Vector{T}
-    S2::Vector{T}
-    COS_list::Vector{T}
-    SIN_list::Vector{T}
-    EXP_list_1::Vector{T}
-    EXP_list_2::Vector{T}
-    EXP_list_3::Vector{T}
-    EXP_list_4::Vector{T}
-end
-
-Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
+export energy_sum_total, energy_sum_sampling, QuasiEwald_El
 
 function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
     update_finder!(neighbor, info)
@@ -30,8 +15,8 @@ end
 @inbounds function energy_k_sum_0(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
     n_atoms = length(z_list)
 
-    Q_1 = zeros(n_atoms)
-    Q_2 = zeros(n_atoms)
+    Q_1 = zeros(T, n_atoms)
+    Q_2 = zeros(T, n_atoms)
 
     for i in 2:n_atoms
         l = z_list[i - 1]
@@ -237,19 +222,6 @@ end
     return sum_4
 end
 
-function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
-    k_x, k_y, k = k_set
-    for i in 1:n_atoms
-        coord = coords[i]
-        container.COS_list[i] = cos(k_x * coord[1] + k_y * coord[2])
-        container.SIN_list[i] = sin(k_x * coord[1] + k_y * coord[2])
-        container.EXP_list_1[i] = exp(k * coord[3])
-        container.EXP_list_2[i] = exp( - k * coord[3])
-        container.EXP_list_3[i] = exp( - k * (2 * L_z - coord[3]))
-        container.EXP_list_4[i] = exp( - k * (L_z - coord[3]))
-    end
-    return nothing
-end
 
 function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
