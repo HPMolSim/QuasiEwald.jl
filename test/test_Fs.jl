@@ -1,7 +1,9 @@
+using Test
+
 @testset "compare the short range QEM with ICM" begin
     n_atoms = 100
     L = 100.0
-    boundary = Q2dBoudary(L, L, 10.0)
+    boundary = Q2dBoundary(L, L, 10.0)
 
     atoms = Vector{Atom{Float64}}()
     for i in 1:n_atoms
@@ -62,4 +64,14 @@
         @test isapprox(force_icm[i][3], force_qem[i][3], atol = 1e-6)
     end
 
+    # i = 1
+    # coord_1 = info.coords[i]
+    # q_1 = atoms[i].charge
+    # j = 2
+    # coord_2 = info.coords[j]
+    # q_2 = atoms[j].charge
+    # ge = GreensElement(γ_1, γ_2, coord_1[3], coord_2[3], sqrt((coord_1[1] - coord_2[1])^2 + (coord_1[2] - coord_2[2])^2), 10.0, α, 1e-4)
+    # @benchmark force_i, force_j = QuasiEwald_Fs_pair($q_1, $q_2, $ϵ_0, $ge, $coord_1, $coord_2, $gauss_para; single_mode = false)
+    # ge = GreensElement(γ_1, γ_2, coord_1[3], 10.0, α, 1e-4)
+    # @benchmark QuasiEwald_Fs_self($q_1, $ϵ_0, $ge, $gauss_para; single_mode = true)
 end

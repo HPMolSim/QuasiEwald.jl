@@ -33,14 +33,14 @@ end
 function QuasiEwald_Fs!(interaction::QuasiEwaldShortInteraction{T, TI}, neighborfinder::CellListDirQ2D{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
     
     for (i, j, ρ) in neighborfinder.neighbor_list
-        coord_1, coord_2, ρ_sq = position_checkQ2D(coords[i], coords[j], boundary, interaction.cutoff)
-        if iszero(dist_sq)
+        coord_1, coord_2, ρ_sq = position_checkQ2D(coords[i], coords[j], boundary, interaction.r_c)
+        if iszero(ρ_sq)
             nothing
         else
             element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
             q_1 = atoms[i].charge
             q_2 = atoms[j].charge
-            force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para; single_mode = single_mode)
+            force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para)
             acceleration[i] += force_i / atoms[i].mass
             acceleration[j] += force_j / atoms[j].mass
         end
@@ -49,7 +49,7 @@ function QuasiEwald_Fs!(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor
     for i in 1:interaction.n_atoms
         element = GreensElement(interaction.γ_1, interaction.γ_2, coords[i][3], interaction.L[3], interaction.α, interaction.accuracy)
         q = atoms[i].charge
-        force_i = QuasiEwald_Fs_self(q, interaction.ϵ_0, element, interaction.gauss_para; single_mode = single_mode)
+        force_i = QuasiEwald_Fs_self(q, interaction.ϵ_0, element, interaction.gauss_para)
 
         acceleration[i] += force_i / atoms[i].mass
     end
@@ -95,6 +95,7 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     Fsz = Fsz_point_1 .- Fsz_point_2 .- Fsz_gauss
 
     return (q_1 * q_2 / (2 * π * ϵ_0)) .* (Point(Fsx, Fsy, Fsz[1]), Point(-Fsx, -Fsy, Fsz[2]))
+
 end
 
 function QuasiEwald_Fs_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number

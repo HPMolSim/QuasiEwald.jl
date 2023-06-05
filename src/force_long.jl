@@ -1,15 +1,14 @@
 export QuasiEwald_Fl!
 
-function QuasiEwald_Fl!(interaction::QuasiEwaldShortInteraction{T, TI}, neighborfinder::CellListDirQ2D{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
-    update_finder!(neighbor, info)
+function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
 
-    q = [atom.charge for atom in sys.atoms]
-    mass = [atom.mass for atom in sys.atoms]
+    q = [atom.charge for atom in atoms]
+    mass = [atom.mass for atom in atoms]
 
     if interaction.rbe == true
-        force_long_sampling!(q, mass, info.coords, info.acceleration, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
+        force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
     else
-        force_long_total!(q, mass, info.coords, info.acceleration, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+        force_long_total!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
 
     return nothing
