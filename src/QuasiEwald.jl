@@ -6,7 +6,7 @@ using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, D
 
 include("types.jl")
 include("gauss_integrator.jl")
-
+include("rbe_sampling.jl")
 include("greens_functions.jl")
 
 # this part of code will be used in calculation of the interaction energy

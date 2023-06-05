@@ -1,4 +1,4 @@
-export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, Container, update_container!
+export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, Container, update_container!, SortingFinder
 
 struct IcmSys{T, R}
     γ::NTuple{2, T} # (γ_up, γ_down)
