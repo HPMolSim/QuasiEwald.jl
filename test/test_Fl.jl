@@ -1,6 +1,6 @@
 using BenchmarkTools, Test
 
-n_atoms = 10;
+n_atoms = 50;
 q = randn(n_atoms);
 q .-= sum(q) / n_atoms;
 

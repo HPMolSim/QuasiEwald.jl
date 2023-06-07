@@ -6,7 +6,7 @@ function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborf
     mass = [atom.mass for atom in atoms]
 
     if interaction.rbe == true
-        force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
+        force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
     else
         force_long_total!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
@@ -57,12 +57,13 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
 
     acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
 
-    element = GreensElement(γ_1, γ_2, L_z, α)
+    element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
     sum_temp = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
 
     for i in 1:rbe_p
         k_set = K_set[rand(1:size(K_set)[1])]
+        k_x, k_y, k = k_set
         update_container!(container, k_set, n_atoms, L_z, coords)
         erase_sum_temp!(sum_temp)
         force_k_sum_1!(k_set, q, z_list, container, sum_temp, element)
