@@ -5,23 +5,20 @@ using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, D
 
 
 include("types.jl")
-include("gauss_integrator.jl")
-include("rbe_sampling.jl")
-include("greens_functions.jl")
-include("system_init.jl")
+include("init.jl")
 
-# this part of code will be used in calculation of the interaction energy
-include("energy.jl")
-include("energy_short.jl")
-include("energy_long.jl")
+include("tools/greens_functions.jl")
+include("tools/image_charge_method.jl")
+include("tools/gauss_integrator.jl")
+include("tools/rbe_sampling.jl")
 
-# this part of code will be used in calculation of the interaction force
-include("force.jl")
-include("force_short.jl")
-include("force_long.jl")
+include("force/force.jl")
+include("force/force_long.jl")
+include("force/force_short.jl") 
 
-# a code based on image charge method, which can calculate the interaction energy directly
-include("ICM.jl")
+include("energy/energy.jl")
+include("energy/energy_long.jl")
+include("energy/energy_short.jl")
 
 end
 
