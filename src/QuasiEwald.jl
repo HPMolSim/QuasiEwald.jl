@@ -7,10 +7,10 @@ using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, D
 include("types.jl")
 include("init.jl")
 
-include("tools/greens_functions.jl")
-include("tools/image_charge_method.jl")
-include("tools/gauss_integrator.jl")
-include("tools/rbe_sampling.jl")
+include("tools/Greens_functions.jl")
+include("tools/Icm.jl")
+include("tools/Gaussian_integrator.jl")
+include("tools/Importance_sampling.jl")
 
 include("force/force.jl")
 include("force/force_long.jl")
