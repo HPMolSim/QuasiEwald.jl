@@ -1,4 +1,4 @@
-@testset "Image charge method work test" begin
+@testset "Image charge method" begin
     N = 10
     γ_up = 0.10
     γ_down = - 0.15

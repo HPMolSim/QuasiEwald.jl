@@ -1,31 +1,22 @@
 export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2
 
-function Gamma_1(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
-    if l == 0
-        green_u = sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / 2
-    else
-        green_u = element.b[l] * exp(- k * element.a[l]) / 2
-    end
-    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
-    G_1 = green_u / green_d
-    return G_1
+function Gamma_1(k::T, element::GreensElement{T}) where T<:Number
+    
+    return sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / T(2)
+
 end
 
-function Gamma_2(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
-    if l == 0
-        green_u = sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2 ,3, 4)) / 2
-    else
-        green_u = element.b[l] * exp(- k * element.a[l]) / 2
-    end
-    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
-    G_2 = element.γ_1 * element.γ_2 * green_u * exp(- 2.0 * k * element.L_z) / green_d
-    return G_2
+function Gamma_2(k::T, element::GreensElement{T}) where T<:Number
+
+    green_u = sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2 ,3, 4)) / T(2)
+
+    return element.γ_1 * element.γ_2 * green_u * exp(- 2.0 * k * element.L_z)
 end
 
 
 # these functions define the dz_Gamma1/2, which are used to calculate the forces
 # now these two dz function will have tuple as return value
-function dz_Gamma_1(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
+function dz_Gamma_1(k::T, element::GreensElement{T} ) where T<:Number
     a = element.a
     sa = element.sign_a
     b = element.b
@@ -47,11 +38,11 @@ function dz_Gamma_1(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
 end
 
 
-function dz_Gamma_2(k::T, element::GreensElement{T}; l::Int = 0) where T<:Number
+function dz_Gamma_2(k::T, element::GreensElement{T} ) where T<:Number
     return (element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z)) .* dz_Gamma_1(k, element)
 end
 
-function dz_Gamma_self_1(k::T, element::GreensElement{T}; l::Int = 0)::T where T<:Number
+function dz_Gamma_self_1(k::T, element::GreensElement{T} )::T where T<:Number
     a = element.a
     sa = element.sign_a
     b = element.b
@@ -65,6 +56,6 @@ function dz_Gamma_self_1(k::T, element::GreensElement{T}; l::Int = 0)::T where T
 end
 
 
-function dz_Gamma_self_2(k::T, element::GreensElement{T}; l::Int = 0)::T where T<:Number
+function dz_Gamma_self_2(k::T, element::GreensElement{T} )::T where T<:Number
     return (element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z)) * dz_Gamma_self_1(k, element)
 end

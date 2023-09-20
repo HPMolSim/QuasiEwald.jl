@@ -1,13 +1,50 @@
 export QuasiEwald_Es, QuaisEwald_Es_pair, QuaisEwald_Es_self, Es_gauss_core, Es_point_core
 
 # the core functions are the integrands
-function Es_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number} 
-    E_s_g = Gamma_1(k, element; l = l) * exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)
+function Es_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+
+    if element.γ_1 * element.γ_2 ≤ 1
+        E_s_g = Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        E_s_g = (Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * Gamma_1(k_0, element) * exp(- k_0*k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ)) / green_d
+    end
+
     return E_s_g
 end
 
-function Es_point_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    E_s_p = Gamma_2(k, element; l = l) * besselj0(k * element.ρ)
+function Es_gauss_core(element::GreensElement{T}) where {T<:Number}
+    if element.γ_1 * element.γ_2 ≤ 1
+        E_s_g = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        E_s_g = Gamma_1(k_0, element) * exp(- k_0 * k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
+    return E_s_g
+end
+
+function Es_point_core(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+
+    if element.γ_1 * element.γ_2 ≤ 1
+        E_s_p = Gamma_2(k, element) * besselj0(k * element.ρ) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        E_s_p = (Gamma_2(k, element) * besselj0(k * element.ρ) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * Gamma_2(k_0, element) * besselj0(k_0 * element.ρ)) / green_d
+    end
+    
+    return E_s_p
+end
+
+function Es_point_core(element::GreensElement{T}) where {T<:Number}
+    if element.γ_1 * element.γ_2 ≤ 1
+        E_s_p = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        E_s_p = Gamma_2(k_0, element) * besselj0(k_0 * element.ρ) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
+
     return E_s_p
 end
 
@@ -43,11 +80,11 @@ end
 function QuaisEwald_Es_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number
     k_f1 = maximum(element.k_f1)
     k_f2 = maximum(element.k_f2)
-    Es_point_1 = Gauss_int(Es_point_core, gauss_para, element, region = (zero(T), k_f2))
+    Es_point_1 = Gauss_int(Es_point_core, gauss_para, element, region = (zero(T), k_f2)) + Es_point_core(element)
     Es_point_2 = 0.5 * sum(l -> element.b[l] / sqrt(element.a[l]^2 + element.ρ^2), (1, 2, 3, 4))
 
     if single_mode == false
-        Es_gauss = Gauss_int(Es_gauss_core, gauss_para, element, region = (zero(T), k_f1))
+        Es_gauss = Gauss_int(Es_gauss_core, gauss_para, element, region = (zero(T), k_f1)) + Es_gauss_core(element)
     else
         Es_gauss = zero(T)
     end
@@ -60,11 +97,11 @@ function QuaisEwald_Es_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para
     k_f1 = maximum(element.k_f1)
     k_f2 = maximum(element.k_f2)
 
-    Es_point_1 = Gauss_int(Es_point_core, gauss_para, element, region = (zero(T), k_f2))
+    Es_point_1 = Gauss_int(Es_point_core, gauss_para, element, region = (zero(T), k_f2)) + Es_point_core(element)
     Es_point_2 = 0.5 * sum(l -> element.b[l] / element.a[l], (2, 3, 4))
 
     if single_mode == false
-        Es_gauss = Gauss_int(Es_gauss_core, gauss_para, element, region = (zero(T), k_f1))
+        Es_gauss = Gauss_int(Es_gauss_core, gauss_para, element, region = (zero(T), k_f1)) + Es_gauss_core(element)
     else
         Es_gauss = zero(T)
     end

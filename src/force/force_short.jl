@@ -1,32 +1,88 @@
 export QuasiEwald_Fs!, QuasiEwald_Fs_pair, QuasiEwald_Fs_self
 
-function Fsr_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sr_g = k * Gamma_1(k, element; l = l) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ)
+function Fsr_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sr_g = k * Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sr_g = (k * Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * k_0 * Gamma_1(k_0, element) * exp(- k_0*k_0 / (4 * element.α)) * besselj1(k_0 * element.ρ)) / green_d
+    end
     return f_sr_g
 end
 
-function Fsr_point_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sr_p = k * Gamma_2(k, element; l = l) * besselj1(k * element.ρ)
+function Fsr_gauss_core(element::GreensElement{T}) where {T<:Number}
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sr_g = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sr_g = k_0 * Gamma_1(k_0, element) * exp(- k_0*k_0 / (4 * element.α)) * besselj1(k_0 * element.ρ) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
+    return f_sr_g
+end
+
+function Fsr_point_core(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sr_p = k * Gamma_2(k, element) * besselj1(k * element.ρ) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sr_p = (k * Gamma_2(k, element) * besselj1(k * element.ρ) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * k_0 * Gamma_2(k_0, element) * besselj1(k_0 * element.ρ)) / green_d
+    end
+
     return f_sr_p
 end
 
-function Fsz_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_1(k, element; l = l)
+function Fsr_point_core(element::GreensElement{T}) where {T<:Number}
+    f_sr_p = zero(T)
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sr_p = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sr_p = k_0 * Gamma_2(k_0, element) * besselj1(k_0 * element.ρ) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
+    return f_sr_p
+end
+
+function Fsz_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
+    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_1(k, element)
     return f_sz_g
 end
 
-function Fsz_point_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_2(k, element; l = l)
+function Fsz_gauss_core(element::GreensElement{T}) where {T<:Number}
+    f_sz_g = zero(T)
+    return f_sz_g
+end
+
+function Fsz_point_core(k::T, element::GreensElement{T}) where {T<:Number}
+    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_2(k, element)
     return f_sz_p
 end
 
-function Fsz_self_gauss_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_self_1(k, element; l = l)
+function Fsz_point_core(element::GreensElement{T}) where {T<:Number}
+    f_sz_p = zero(T)
+    return f_sz_p
+end
+
+function Fsz_self_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
+    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_self_1(k, element)
     return f_sz_g
 end
 
-function Fsz_self_point_core(k::T, element::GreensElement{T}; l::Int = 0) where {T<:Number}
-    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_self_2(k, element; l = l)
+function Fsz_self_gauss_core(element::GreensElement{T}) where {T<:Number}
+    f_sz_g = zero(T)
+    return f_sz_g
+end
+
+function Fsz_self_point_core(k::T, element::GreensElement{T}) where {T<:Number}
+    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_self_2(k, element)
+    return f_sz_p
+end
+
+function Fsz_self_point_core( element::GreensElement{T}) where {T<:Number}
+    f_sz_p = zero(T)
     return f_sz_p
 end
 
