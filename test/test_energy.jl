@@ -1,5 +1,5 @@
 @testset "compare the energy with ICM method" begin
-    n_atoms = 50
+    n_atoms = 20
     L = 10.0
     boundary = ExTinyMD.Q2dBoundary(L, L, 10.0)
 
@@ -11,7 +11,7 @@
     info = SimulationInfo(n_atoms, atoms, (0.0, L, 0.0, L, 0.0, 10.0), boundary; min_r = 1.0, temp = 1.0)
 
     interactions = [(LennardJones(), CellListDir3D(info, 4.5, boundary, 100))]
-    loggers = []
+    loggers = [TempartureLogger(100, output = false)]
     simulator = VerletProcess(dt = 0.001, thermostat = AndersenThermoStat(1.0, 0.05))
 
     sys = MDSys(
@@ -33,9 +33,10 @@
         ref_pos, ref_charge = IcmSysInit(ICM_sys, info.coords, [atom.charge for atom in atoms])
         energy_icm = IcmEnergy(ICM_sys, info.coords, [atom.charge for atom in atoms], ref_pos, ref_charge)
 
-        accuracy = 1e-3
+        accuracy = 1e-4
         α = 10.0
-        r_c = (α * accuracy)^(-1/3)
+        # r_c = (α * accuracy)^(-1/3)
+        r_c = 4.5
         k_c = sqrt(-4 * α * log(accuracy))
 
         sortz = SortingFinder(info.coords)

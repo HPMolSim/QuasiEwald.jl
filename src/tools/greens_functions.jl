@@ -1,4 +1,4 @@
-export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2
+export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2, dz_Gamma_self_1, dz_Gamma_self_2
 
 function Gamma_1(k::T, element::GreensElement{T}) where T<:Number
     
@@ -31,10 +31,10 @@ function dz_Gamma_1(k::T, element::GreensElement{T} ) where T<:Number
     dz_green_u2 = dot((-one(T), one(T), one(T), -one(T)), dz_green_ui)
     dz_green_u = (k/2) .* (dz_green_u1, dz_green_u2)
 
-    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    # green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
 
-    dz_G_1 = dz_green_u ./ green_d
-    return dz_G_1
+    # dz_G_1 = dz_green_u ./ green_d
+    return dz_green_u
 end
 
 
@@ -49,10 +49,10 @@ function dz_Gamma_self_1(k::T, element::GreensElement{T} )::T where T<:Number
 
     dz_green_u = (k/2) * (sa[2] * b[2] * exp(- k * a[2]) + sa[3] * b[3] * exp(- k * a[3]))
 
-    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    # green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    # dz_G_1 = dz_green_u / green_d
 
-    dz_G_1 = dz_green_u / green_d
-    return dz_G_1
+    return dz_green_u
 end
 
 

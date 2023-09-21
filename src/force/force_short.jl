@@ -1,4 +1,4 @@
-export Fsr_gauss_core, Fsr_point_core, QuasiEwald_Fs!, QuasiEwald_Fs_pair, QuasiEwald_Fs_self
+export Fsr_gauss_core, Fsr_point_core, Fsz_gauss_core, Fsz_point_core, Fsz_self_gauss_core, Fsz_self_point_core, QuasiEwald_Fs!, QuasiEwald_Fs_pair, QuasiEwald_Fs_self
 
 function Fsr_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
     green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
@@ -36,7 +36,7 @@ function Fsr_point_core(k::T, element::GreensElement{T}) where {T<:Number}
 end
 
 function Fsr_point_core(element::GreensElement{T}) where {T<:Number}
-    f_sr_p = zero(T)
+
     if element.γ_1 * element.γ_2 ≤ 1
         f_sr_p = zero(T)
     else
@@ -47,42 +47,88 @@ function Fsr_point_core(element::GreensElement{T}) where {T<:Number}
 end
 
 function Fsz_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
-    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_1(k, element)
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_1(k, element) ./ green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_g = ((exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_1(k, element) .- (element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * (exp(- k_0*k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ))) .* dz_Gamma_1(k_0, element)) ./ green_d
+    end
+
     return f_sz_g
 end
 
 function Fsz_gauss_core(element::GreensElement{T}) where {T<:Number}
-    f_sz_g = zero(T)
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_g = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_g = ((exp(- k_0*k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ)) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)) .* dz_Gamma_1(k_0, element)
+    end
     return f_sz_g
 end
 
 function Fsz_point_core(k::T, element::GreensElement{T}) where {T<:Number}
-    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_2(k, element)
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_2(k, element) ./ green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_p = (besselj0(k * element.ρ) .* dz_Gamma_2(k, element) .- (element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z)) * besselj0(k_0 * element.ρ) .* dz_Gamma_2(k_0, element) ) ./ green_d
+    end
     return f_sz_p
 end
 
 function Fsz_point_core(element::GreensElement{T}) where {T<:Number}
-    f_sz_p = zero(T)
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_p = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_p = (besselj0(k_0 * element.ρ) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)) .* dz_Gamma_2(k_0, element)
+    end
     return f_sz_p
 end
 
 function Fsz_self_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
-    f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) .* dz_Gamma_self_1(k, element)
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_g = (exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) * dz_Gamma_self_1(k, element) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_g = ((exp(- k*k / (4 * element.α)) * besselj0(k * element.ρ)) * dz_Gamma_self_1(k, element) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * (exp(- k_0*k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ)) * dz_Gamma_self_1(k_0, element)) / green_d
+    end
     return f_sz_g
 end
 
 function Fsz_self_gauss_core(element::GreensElement{T}) where {T<:Number}
-    f_sz_g = zero(T)
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_g = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_g = (exp(- k_0*k_0 / (4 * element.α)) * besselj0(k_0 * element.ρ)) * dz_Gamma_self_1(k_0, element) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
     return f_sz_g
 end
 
 function Fsz_self_point_core(k::T, element::GreensElement{T}) where {T<:Number}
-    f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_self_2(k, element)
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - 1
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_p = besselj0(k * element.ρ) .* dz_Gamma_self_2(k, element) / green_d
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_p = (besselj0(k * element.ρ) .* dz_Gamma_self_2(k, element) - element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) * besselj0(k_0 * element.ρ) .* dz_Gamma_self_2(k_0, element)) / green_d
+    end
     return f_sz_p
 end
 
 function Fsz_self_point_core( element::GreensElement{T}) where {T<:Number}
-    f_sz_p = zero(T)
+    if element.γ_1 * element.γ_2 ≤ 1
+        f_sz_p = zero(T)
+    else
+        k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+        f_sz_p = besselj0(k_0 * element.ρ) * dz_Gamma_self_2(k_0, element) * log(element.γ_1 * element.γ_2 - 1) / (2 * element.L_z)
+    end
     return f_sz_p
 end
 
@@ -118,10 +164,10 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     ρ = element.ρ
 
     # about the force in ρ direction
-    Fsr_point_1 = Gauss_int(Fsr_point_core, gauss_para, element, region = (zero(T), k_f2))
+    Fsr_point_1 = Gauss_int(Fsr_point_core, gauss_para, element, region = (zero(T), k_f2)) + Fsr_point_core(element)
     Fsr_point_2 = T(0.5) * sum(l -> element.b[l] * ρ / (element.a[l]^2 + ρ^2)^1.5, (1, 2, 3, 4))
     if single_mode == false
-        Fsr_gauss = Gauss_int(Fsr_gauss_core, gauss_para, element, region = (zero(T), k_f1))
+        Fsr_gauss = Gauss_int(Fsr_gauss_core, gauss_para, element, region = (zero(T), k_f1)) + Fsr_gauss_core(element)
     else
         Fsr_gauss = zero(T)
     end
@@ -131,7 +177,7 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     Fsy = Fsr * (coord_1[2] - coord_2[2]) / ρ
     
     # about the force in z direction
-    Fsz_point_1 = Gauss_int_Tuple(Fsz_point_core, gauss_para, element, region = (zero(T), k_f2))
+    Fsz_point_1 = Gauss_int_Tuple(Fsz_point_core, gauss_para, element, region = (zero(T), k_f2)) .+ Fsz_point_core(element)
     
     a = element.a
     sa = element.sign_a
@@ -144,7 +190,7 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     )
     Fsz_point_2 = (sum(Fsz_point_2_temp), dot((-one(T), one(T), one(T), -one(T)), Fsz_point_2_temp)) ./ T(2)
     if single_mode == false
-        Fsz_gauss = Gauss_int_Tuple(Fsz_gauss_core, gauss_para, element, region = (zero(T), k_f1))
+        Fsz_gauss = Gauss_int_Tuple(Fsz_gauss_core, gauss_para, element, region = (zero(T), k_f1)) .+ Fsz_gauss_core(element)
     else
         Fsz_gauss = (zero(T), zero(T))
     end
@@ -158,13 +204,13 @@ function QuasiEwald_Fs_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para
     k_f1 = maximum(element.k_f1)
     k_f2 = maximum(element.k_f2)
     
-    Fsz_point_1 = Gauss_int(Fsz_self_point_core, gauss_para, element, region = (zero(T), k_f2))
+    Fsz_point_1 = Gauss_int(Fsz_self_point_core, gauss_para, element, region = (zero(T), k_f2)) + Fsz_self_point_core(element)
     a = element.a
     sa = element.sign_a
     b = element.b
     Fsz_point_2 = 0.5 * sum(l-> b[l] * sa[l] / a[l]^2, (2, 3))
     if single_mode == false
-        Fsz_gauss = Gauss_int(Fsz_self_gauss_core, gauss_para, element, region = (zero(T), k_f1))
+        Fsz_gauss = Gauss_int(Fsz_self_gauss_core, gauss_para, element, region = (zero(T), k_f1)) + Fsz_self_gauss_core(element)
     else
         Fsz_gauss = zero(T)
     end
