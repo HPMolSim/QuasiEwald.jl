@@ -10,18 +10,18 @@
 
     info = SimulationInfo(n_atoms, atoms, (0.0, L, 0.0, L, 0.0, 10.0), boundary; min_r = 1.0, temp = 1.0)
 
-    interactions = [(LennardJones(), CellListDir3D(info, 4.5, boundary, 100))]
-    loggers = [TempartureLogger(100, output = false)]
-    simulator = VerletProcess(dt = 0.001, thermostat = AndersenThermoStat(1.0, 0.05))
+    # interactions = [(LennardJones(), CellListDir3D(info, 4.5, boundary, 100))]
+    # loggers = [TempartureLogger(100, output = false)]
+    # simulator = VerletProcess(dt = 0.001, thermostat = AndersenThermoStat(1.0, 0.05))
 
-    sys = MDSys(
-        n_atoms = n_atoms,
-        atoms = atoms,
-        boundary = boundary,
-        interactions = interactions,
-        loggers = loggers,
-        simulator = simulator
-    )
+    # sys = MDSys(
+    #     n_atoms = n_atoms,
+    #     atoms = atoms,
+    #     boundary = boundary,
+    #     interactions = interactions,
+    #     loggers = loggers,
+    #     simulator = simulator
+    # )
 
     for (γ_1, γ_2) in [(0.0, 0.0), (0.4, 0.5), (0.4, -0.5), (-0.4, -0.5)]
         ϵ_0 = 1.0
@@ -46,7 +46,6 @@
 
         force_qem = [Point(0.0, 0.0, 0.0) for i in 1:n_atoms]
         QuasiEwald_Fs!(interaction_short, cellq2d, atoms, boundary, info.coords, force_qem)
-        force_qem_long = [Point(0.0, 0.0, 0.0) for i in 1:n_atoms]
         QuasiEwald_Fl!(interaction_long, sortz, atoms, boundary, info.coords, force_qem)
 
         for i in 1:n_atoms

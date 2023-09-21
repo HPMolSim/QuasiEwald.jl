@@ -1,18 +1,3 @@
-# QuasiEwald.jl
-
-[![Build Status](https://github.com/ArrogantGao/QuasiEwald.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/ArrogantGao/QuasiEwald.jl/actions/workflows/CI.yml?query=branch%3Amain)
-
-`QuasiEwald.jl` is a package used to calculate the electrostatic interaction in dielectric confined Quasi-2D charged systems using the [Quasi-Ewald method](https://arxiv.org/abs/2207.04687), which has a linear complexity.
-
-This package has to be used as an extentation of the author's previous package [`ExTinyMD.jl`](https://github.com/ArrogantGao/ExTinyMD.jl), which is a small but fast MD package written in `Julia` language.
-To use this package, you only need to type
-```
-]add ExTinyMD, QuasiEwald
-```
-in your command lines.
-
-Here is an simple example, which will calculate the interaction between two paricle confined by dielectric substrate of different dielectric permittivity.
-```
 using Plots, ExTinyMD, QuasiEwald
 
 begin
@@ -64,23 +49,9 @@ begin
         push!(Force_x, force_x)
     end
 
-    plot(dpi = 300, size = (800, 600), legend = :topleft, xlabel = "x", ylabel = "force_x")
+    plot(dpi = 300, size = (800, 600), legend = :topright, xlabel = "x", ylabel = "force_x")
     for (γ, force_x) in zip([0.0, 0.95, -0.95, 10.0, -10.0], Force_x)
         plot!(X, force_x, label = "γ = " * string(γ), ylim = [-0.06, 0.06])
     end
     savefig("force_x.png")
 end
-```
-To run this script, you can simple type:
-```
-julia ./example/force/force_pair.jl
-```
-The result is shown below:
-
-![Force in x direction](./examples/force/force_x.png)
-
-
-Here is another example, which shows how to simulate a dielectric confined charged system via `ExTinyMD.jl` and `QuasiEwald.jl`.
-```
-
-```
