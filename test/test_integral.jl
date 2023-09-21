@@ -26,6 +26,32 @@ function Es_point_core_direct(k::T, element::GreensElement{T}) where {T<:Number}
     return E_s_p
 end
 
+function Fsr_gauss_core_direct(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+    k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+
+    if k ≤ 2 * k_0
+        f_sr_g = k * Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ) / green_d + k_0 * Gamma_1(k_0, element) * exp(- k_0*k_0 / (4 * element.α)) * besselj1(k_0 * element.ρ) / (2 * element.L_z * (k - k_0))
+    else
+        f_sr_g = k * Gamma_1(k, element) * exp(- k*k / (4 * element.α)) * besselj1(k * element.ρ) / green_d
+    end
+
+    return f_sr_g
+end
+
+function Fsr_point_core_direct(k::T, element::GreensElement{T}) where {T<:Number}
+    green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
+    k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
+
+    if k ≤ 2 * k_0
+        f_sr_p = k * Gamma_2(k, element) * besselj1(k * element.ρ) / green_d + k_0 * Gamma_2(k_0, element) * besselj1(k_0 * element.ρ) / (2 * element.L_z * (k - k_0))
+    else
+        f_sr_p = k * Gamma_2(k, element) * besselj1(k * element.ρ) / green_d
+    end
+
+    return f_sr_p
+end
+
 
 @testset "Gauss Integrator for divergent integrands (energy)" begin
     γ_1 = 2.0
@@ -46,13 +72,20 @@ end
     k_0 = log(element.γ_1 * element.γ_2) / (2 * element.L_z)
 
     energy_gauss_pv = Gauss_int(Es_gauss_core, gauss_para_pv, element, region = (0.0, k_f1)) + Es_gauss_core(element)
-
     energy_gauss_direct = Gauss_int(Es_gauss_core_direct, gauss_para_direct, element, region = (0.0, 2 * k_0)) + Gauss_int(Es_gauss_core_direct, gauss_para_direct, element, region = (2 * k_0, k_f1))
 
     energy_point_pv = Gauss_int(Es_point_core, gauss_para_pv, element, region = (0.0, k_f2)) + Es_point_core(element)
-
     energy_point_direct = Gauss_int(Es_point_core_direct, gauss_para_direct, element, region = (0.0, 2 * k_0)) + Gauss_int(Es_point_core_direct, gauss_para_direct, element, region = (2 * k_0, k_f2))
+
+    fsr_gauss_pv = Gauss_int(Fsr_gauss_core, gauss_para_pv, element, region = (0.0, k_f1)) + Fsr_gauss_core(element)
+    fsr_gauss_direct = Gauss_int(Fsr_gauss_core_direct, gauss_para_direct, element, region = (0.0, 2 * k_0)) + Gauss_int(Fsr_gauss_core_direct, gauss_para_direct, element, region = (2 * k_0, k_f1))
+
+    fsr_point_pv = Gauss_int(Fsr_point_core, gauss_para_pv, element, region = (0.0, k_f2)) + Fsr_point_core(element)
+    fsr_point_direct = Gauss_int(Fsr_point_core_direct, gauss_para_direct, element, region = (0.0, 2 * k_0)) + Gauss_int(Fsr_point_core_direct, gauss_para_direct, element, region = (2 * k_0, k_f2))
+
 
     @test isapprox(energy_gauss_pv, energy_gauss_direct, atol = 1e-6)
     @test isapprox(energy_point_pv, energy_point_direct, atol = 1e-6)
+    @test isapprox(fsr_gauss_pv, fsr_gauss_direct, atol = 1e-6)
+    @test isapprox(fsr_point_pv, fsr_point_direct, atol = 1e-6)
 end
