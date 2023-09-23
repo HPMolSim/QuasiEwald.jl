@@ -13,7 +13,6 @@ function Gamma_2(k::T, element::GreensElement{T}) where T<:Number
     return element.γ_1 * element.γ_2 * green_u * exp(- 2.0 * k * element.L_z)
 end
 
-
 # these functions define the dz_Gamma1/2, which are used to calculate the forces
 # now these two dz function will have tuple as return value
 function dz_Gamma_1(k::T, element::GreensElement{T} ) where T<:Number
