@@ -7,7 +7,7 @@ using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, D
 include("types.jl")
 include("init.jl")
 
-include("tools/Greens_functions.jl")
+include("tools/greens_functions.jl")
 include("tools/Icm.jl")
 include("tools/Gaussian_integrator.jl")
 include("tools/Importance_sampling.jl")
