@@ -4,9 +4,9 @@ using ExTinyMD
 using SpecialFunctions
 
 @testset "QuasiEwald.jl" begin
-    include("test_Icm.jl")
-    include("test_integral.jl")
-    include("test_force.jl")
-    include("test_energy.jl")
+    include("Icm.jl")
+    include("integral.jl")
+    include("force.jl")
+    include("energy.jl")
     # include("test_simulate.jl")
 end
