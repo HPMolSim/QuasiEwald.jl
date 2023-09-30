@@ -1,6 +1,5 @@
 using QuasiEwald
 using Test
-using BenchmarkTools
 using ExTinyMD
 using SpecialFunctions
 
