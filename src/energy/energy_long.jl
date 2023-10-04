@@ -1,4 +1,110 @@
-export energy_sum_total, energy_sum_sampling, QuasiEwald_El
+export energy_sum_total, energy_sum_sampling, QuasiEwald_El, Container, update_container!, direct_sum_total, RingAngles, nearest_angle_indice
+
+struct RingAngles{T}
+    ring_angles::Vector{T}
+    sectors_sum::Vector{T}
+end
+
+function RingAngles(k_0::T, L_x::T, L_y::T, L_z::T, α::T, k_c::T) where{T}
+    ring_angles = Vector{T}()
+    nx_max = ceil(Int, k_0 * L_x / 2π) + 2
+    ny_max = ceil(Int, k_0 * L_y / 2π) + 2
+
+    push!(ring_angles, -π)
+    for nx in - nx_max : nx_max
+        for ny in - ny_max : ny_max
+            k_x = nx * 2π / L_x
+            k_y = ny * 2π / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            if abs(k - k_0) < π / sqrt(L_x * L_y)
+                θ = atan(k_y, k_x)
+                push!(ring_angles, θ)
+            end
+        end
+    end
+    sort!(ring_angles)
+
+    sectors_sum = zeros(T, length(ring_angles) - 1)
+
+    nxc_max = ceil(Int, k_c * L_x / 2π) + 1
+    nyc_max = ceil(Int, k_c * L_y / 2π) + 1
+
+    for nx in - nxc_max : nxc_max
+        for ny in - nyc_max : nyc_max
+            k_x = nx * 2π / L_x
+            k_y = ny * 2π / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            if 0 < k <= k_c 
+                nearest_id = nearest_angle_indice(k_x, k_y, ring_angles)
+                sectors_sum[nearest_id] += exp(- k^2 / (4 * α)) / (exp(- 2 * (k - k_0) * L_z) - 1)
+            end
+        end
+    end
+
+    return RingAngles{T}(ring_angles, sectors_sum)
+end
+
+function nearest_angle_indice(k_x::T, k_y::T, ring_angles::Vector{T}) where{T}
+    θ_k = atan(k_y, k_x)
+    θ_ring = ring_angles
+
+    low = 1
+    high = length(θ_ring)
+    closest = θ_ring[low]
+    id = 1
+
+    while low <= high
+        mid = low + (high - low) ÷ 2
+        if θ_ring[mid] == θ_k
+            id = mid
+            break
+        elseif θ_ring[mid] < θ_k
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+
+        if abs(θ_ring[mid] - θ_k) < abs(closest - θ_k)
+            closest = θ_ring[mid]
+            id = mid
+        end
+    end
+
+    if id == length(θ_ring)
+        id = 1
+    end
+
+    return id
+end
+
+mutable struct Container{T}
+    C1::Vector{T}
+    S1::Vector{T}
+    C2::Vector{T}
+    S2::Vector{T}
+    COS_list::Vector{T}
+    SIN_list::Vector{T}
+    EXP_list_1::Vector{T}
+    EXP_list_2::Vector{T}
+    EXP_list_3::Vector{T}
+    EXP_list_4::Vector{T}
+end
+
+Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
+
+function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
+    k_x, k_y, k = k_set
+    for i in 1:n_atoms
+        coord = coords[i]
+        container.COS_list[i] = cos(k_x * coord[1] + k_y * coord[2])
+        container.SIN_list[i] = sin(k_x * coord[1] + k_y * coord[2])
+        container.EXP_list_1[i] = exp(k * coord[3])
+        container.EXP_list_2[i] = exp( - k * coord[3])
+        container.EXP_list_3[i] = exp( - k * (2 * L_z - coord[3]))
+        container.EXP_list_4[i] = exp( - k * (L_z - coord[3]))
+    end
+    return nothing
+end
 
 function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
     update_finder!(neighbor, info)
@@ -37,22 +143,19 @@ end
 
 @inbounds function energy_k_sum(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, element::GreensElement{T}, container::Container{T}) where{T <: Number, TI<:Integer}
     k_x, k_y, k = k_set
-    n_atoms = size(coords)[1]
     L_z = element.L_z
-    # q = [atoms.charge[i] for i in 1:n_atoms]
+
     α = element.α
 
     γ_1 = element.γ_1
     γ_2 = element.γ_2
-    β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
-
 
     sum_1 = energy_k_sum_1(q, z_list, container)
-    sum_2 = energy_k_sum_2(q, z_list,  exp(-2*k*L_z), container)
+    sum_2 = energy_k_sum_2(q, z_list, container)
     sum_3 = energy_k_sum_3(q, z_list, container)
     sum_4 = energy_k_sum_4(q, z_list, container)
 
-    return (sum_1 + γ_1 * γ_2 * sum_2 + γ_1 * sum_3 + γ_2 * sum_4) * β / k
+    return (sum_1 + γ_1 * γ_2 * sum_2 + γ_1 * sum_3 + γ_2 * sum_4)
 end
 
 @inbounds function energy_k_sum_1(q::Vector{T}, z_list::Vector{TI}, container::Container{T}) where {T <: Number, TI <: Integer}
@@ -107,7 +210,7 @@ end
     return sum_1
 end
 
-@inbounds function energy_k_sum_2(q::Vector{T}, z_list::Vector{TI}, EXP_Lz::T, container::Container{T}) where {T <: Number, TI <: Integer}
+@inbounds function energy_k_sum_2(q::Vector{T}, z_list::Vector{TI}, container::Container{T}) where {T <: Number, TI <: Integer}
     n_atoms = length(z_list)
 
     COS_list = container.COS_list
@@ -157,7 +260,7 @@ end
             SIN_list[l] * (
                 EXP_list_3[l] * S1[i] + EXP_list_2[l] * S2[i]
             ) + 
-            q_l * EXP_Lz
+            q_l * EXP_list_2[l] * EXP_list_3[l]
         )
     end
 
@@ -243,14 +346,64 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
             k = sqrt(k_x^2 + k_y^2)
             k_set = (k_x, k_y, k)
             if k < k_c && k != 0
+                β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
                 update_container!(container, k_set, n_atoms, L_z, coords)
-                sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container)
+                sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container) * β / k
                 sum_total += sum_k * exp(- k*k / (4 * α))
             end
         end
     end
 
     return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)
+end
+
+# this is a function used to verify our summation method for the divergent cases, assume that γ_1 × γ_2 ≥ 1
+function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+    @assert γ_1 * γ_2 ≥ one(T)
+
+    n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
+    k_0 = log(γ_1 * γ_2) / (2 * L_z)
+
+    sum_k0 = energy_k_sum_0(q, coords, z_list)
+    
+    sum_smooth = zero(T)
+    sum_div = zero(T)
+    n_x_max = TI(round(k_c * L_x / T(2) * π, RoundUp))
+    n_y_max = TI(round(k_c * L_y / T(2) * π, RoundUp))
+
+    green_element = GreensElement(γ_1, γ_2, L_z, α)
+    container = Container{T}(n_atoms)
+    container_k0 = Container{T}(n_atoms)
+    
+    # the smooth part without divergence
+    for n_x in - n_x_max : n_x_max
+        for n_y in - n_y_max : n_y_max
+            k_x = T(2) * π * n_x / L_x
+            k_y = T(2) * π * n_y / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            k_set = (k_x, k_y, k)
+            kn0_angle = ringangles.ring_angles[nearest_angle_indice(k_x, k_y, ringangles.ring_angles)]
+            kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+            if k < k_c && k != 0
+                β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
+                update_container!(container, k_set, n_atoms, L_z, coords)
+                update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+                sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(k_set, q, coords, z_list, green_element, container_k0) / k_0) * β
+                sum_smooth += sum_k * exp(- k*k / (4 * α))
+            end
+        end
+    end
+
+    # the divergent part
+    for sector_id in 1:length(ringangles.ring_angles) - 1
+        kn0_angle = ringangles.ring_angles[sector_id]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+        sum_div += ringangles.sectors_sum[sector_id] * energy_k_sum(kn0_set, q, coords, z_list, green_element, container_k0) / k_0
+    end
+    
+    return - (sum_k0 + sum_smooth + sum_div) / (T(4) * L_x * L_y * ϵ_0)
 end
 
 function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
@@ -265,18 +418,62 @@ function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::
 
     for i in 1:rbe_p
         k_set = K_set[rand(1:size(K_set)[1])]
-        sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container)
+        k_x, k_y, k = k_set
+        β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
+        update_container!(container, k_set, n_atoms, L_z, coords)
+        sum_k = energy_k_sum(k_set, q, coords, z_list, green_element, container) * β / k
         sum_total += sum_k * S / rbe_p
     end
 
     return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)
 end
 
+function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+    @assert γ_1 * γ_2 ≥ one(T)
+
+    n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
+    k_0 = log(γ_1 * γ_2) / (2 * L_z)
+
+    sum_k0 = energy_k_sum_0(q, coords, z_list)
+    
+    sum_smooth = zero(T)
+    sum_div = zero(T)
+
+    green_element = GreensElement(γ_1, γ_2, L_z, α)
+    container = Container{T}(n_atoms)
+    container_k0 = Container{T}(n_atoms)
+    
+    # the smooth part without divergence
+    for i in 1:rbe_p
+        k_set = K_set[rand(1:size(K_set)[1])]
+        k_x, k_y, k = k_set
+        β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
+        kn0_angle = ringangles.ring_angles[nearest_angle_indice(k_x, k_y, ringangles.ring_angles)]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+        update_container!(container, k_set, n_atoms, L_z, coords)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+        sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(k_set, q, coords, z_list, green_element, container_k0) / k_0) * β
+        sum_smooth += sum_k * S / rbe_p
+    end
+
+    # the divergent part
+    for sector_id in 1:length(ringangles.ring_angles) - 1
+        kn0_angle = ringangles.ring_angles[sector_id]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+        sum_div += ringangles.sectors_sum[sector_id] * energy_k_sum(kn0_set, q, coords, z_list, green_element, container_k0) / k_0
+    end
+
+    return - (sum_k0 + sum_smooth + sum_div) / (T(4) * L_x * L_y * ϵ_0)
+end
+
 
 # this are three function used to verify our summation method
 # they do the summation directly instead of by sorting
-function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L_x::T, L_y::T, L_z::T, k_c::T, α::T, γ_1::T, γ_2::T) where {T}
+function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T}
     n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
 
     sum_k0 = zero(T)
     for i in 1:n_atoms
@@ -295,7 +492,7 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L_x::T, L_y
             k_y = 2 * π * n_y / L_y
             k = sqrt(k_x^2 + k_y^2)
             if k < k_c && k != 0
-                beta = (g_1 * g_2 * exp(-2 * k * L_z) - 1)
+                beta = (γ_1 * γ_2 * exp(-2 * k * L_z) - 1)
                 sum_1 = 0
                 sum_2 = 0
                 sum_3 = 0
@@ -306,17 +503,17 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L_x::T, L_y
                         xj, yj, zj = coords[j]
                         qc = q[i] * q[j] *  cos(k_x * (xi - xj) + k_y * (yi - yj)) / (beta * k)
                         sum_1 += qc * exp(-k * abs(zi - zj)) 
-                        sum_2 += g_1 * qc * exp(-k * (zi + zj)) 
-                        sum_3 += g_2 * qc * exp(-k * (2 * L_z - zi - zj))
-                        sum_4 += g_1 * g_2 * qc * exp(-k * (2 * L_z - abs(zi - zj)))
+                        sum_2 += γ_1 * qc * exp(-k * (zi + zj)) 
+                        sum_3 += γ_2 * qc * exp(-k * (2 * L_z - zi - zj))
+                        sum_4 += γ_1 * γ_2 * qc * exp(-k * (2 * L_z - abs(zi - zj)))
                     end
                 end
-                sum_k += (sum_1 + sum_2 + sum_3 + sum_4) * exp(-k^2 / (4 * alpha))
+                sum_k += (sum_1 + sum_2 + sum_3 + sum_4) * exp(-k^2 / (4 * α))
             end
         end
     end
 
-    return -(sum_k0 + sum_k) / (4 * L_x * L_y)
+    return -(sum_k0 + sum_k) / (4 * L_x * L_y * ϵ_0)
 end
 
 function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, element::GreensElement{T}) where {T<:Number}

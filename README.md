@@ -2,12 +2,15 @@
 
 [![Build Status](https://github.com/ArrogantGao/QuasiEwald.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/ArrogantGao/QuasiEwald.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-`QuasiEwald.jl` is a package used to calculate the electrostatic interaction in dielectric confined Quasi-2D charged systems using the [Quasi-Ewald method](https://arxiv.org/abs/2207.04687), which has a linear complexity.
+`QuasiEwald.jl` is a package written in `Julia`. 
+It is an implementation of the algorithm Quasi Ewald Method, which used to calculate the electrostatic interaction in dielectric confined Quasi-2D charged systems for MD simulations, which has a linear complexity to the number of particles.
+
+## Getting Started
 
 This package has to be used as an extentation of the author's previous package [`ExTinyMD.jl`](https://github.com/ArrogantGao/ExTinyMD.jl), which is a small but fast MD package written in `Julia` language.
 To use this package, you only need to type
-```
-]add ExTinyMD, QuasiEwald
+```julia
+pkg> add ExTinyMD, QuasiEwald
 ```
 in your command lines.
 
@@ -84,3 +87,10 @@ Here is another example, which shows how to simulate a dielectric confined charg
 ```
 
 ```
+
+## Questions and Contributions
+
+Please open an [issue](https://github.com/ArrogantGao/QuasiEwald.jl/issues)
+if you encounter any problems, or have any feature requests.
+
+It is also welcomed for any suggestions about the issues marked as `enhancement`, please let us know if you have any idea about them.
