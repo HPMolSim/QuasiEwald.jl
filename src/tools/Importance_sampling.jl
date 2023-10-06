@@ -1,5 +1,3 @@
-export rbe_sampling
-
 function rbe_sampling(L::NTuple{3, T}, α::T, accuracy::T) where {T <: Number}
     k_c = sqrt( - 4α * log(accuracy))
     L_x, L_y, L_z = L

@@ -1,5 +1,3 @@
-export Fsr_gauss_core, Fsr_point_core, Fsz_gauss_core, Fsz_point_core, Fsz_self_gauss_core, Fsz_self_point_core, QuasiEwald_Fs!, QuasiEwald_Fs_pair, QuasiEwald_Fs_self
-
 function Fsr_gauss_core(k::T, element::GreensElement{T}) where {T<:Number}
     green_d = element.γ_1 * element.γ_2 * exp(- 2 * k * element.L_z) - T(1)
 

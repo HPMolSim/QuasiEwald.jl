@@ -1,16 +1,26 @@
-export QuasiEwald_Fl!
-
 function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
 
     q = [atom.charge for atom in atoms]
     mass = [atom.mass for atom in atoms]
 
     if interaction.rbe == true
-        force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+        if interaction.k_0 > 0
+            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
+        else
+            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+        end
     else
         force_long_total!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
 
+    return nothing
+end
+
+function force_long_k!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp::Vector{Point{3, T}}, element::GreensElement{T}) where {T <: Number, TI <: Integer}
+    force_k_sum_1!(k_set, q, z_list, container, sum_temp, element)
+    force_k_sum_2!(k_set, q, z_list, container, sum_temp, element)
+    force_k_sum_3!(k_set, q, z_list, container, sum_temp, element)
+    force_k_sum_4!(k_set, q, z_list, container, sum_temp, element)
     return nothing
 end
 
@@ -37,14 +47,70 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
             if k < k_c && k != 0
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 erase_sum_temp!(sum_temp)
-                force_k_sum_1!(k_set, q, z_list, container, sum_temp, element)
-                force_k_sum_2!(k_set, q, z_list, container, sum_temp, element)
-                force_k_sum_3!(k_set, q, z_list, container, sum_temp, element)
-                force_k_sum_4!(k_set, q, z_list, container, sum_temp, element)
+                force_long_k!(k_set, q, z_list, container, sum_temp, element)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
                 acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
             end
         end
+    end
+
+    return nothing
+end
+
+function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+    @assert γ_1 * γ_2 ≥ one(T)
+
+    n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
+    k_0 = log(γ_1 * γ_2) / (2 * L_z)
+
+    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    
+    n_x_max = TI(round(k_c * L_x / T(2) * π, RoundUp))
+    n_y_max = TI(round(k_c * L_y / T(2) * π, RoundUp))
+
+    element = GreensElement(γ_1, γ_2, L_z, α)
+    container = Container{T}(n_atoms)
+    container_k0 = Container{T}(n_atoms)
+
+    sum_temp = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+    sum_temp_k0 = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+
+    for n_x in - n_x_max : n_x_max
+        for n_y in - n_y_max : n_y_max
+            k_x = T(2) * π * n_x / L_x
+            k_y = T(2) * π * n_y / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            k_set = (k_x, k_y, k)
+            kn0_angle = ringangles.ring_angles[nearest_angle_indice(k_x, k_y, ringangles.ring_angles)]
+            kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+            if k < k_c && k != 0
+                update_container!(container, k_set, n_atoms, L_z, coords)
+                update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+
+                erase_sum_temp!(sum_temp)
+                erase_sum_temp!(sum_temp_k0)
+
+                force_long_k!(k_set, q, z_list, container, sum_temp, element)
+                force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+
+                sum_temp .-= sum_temp_k0
+
+                β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
+                acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+            end
+        end
+    end
+
+    # the divergent part
+    for sector_id in 1:length(ringangles.ring_angles) - 1
+        kn0_angle = ringangles.ring_angles[sector_id]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+        erase_sum_temp!(sum_temp_k0)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+
+        acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
     end
 
     return nothing
@@ -66,12 +132,59 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         k_x, k_y, k = k_set
         update_container!(container, k_set, n_atoms, L_z, coords)
         erase_sum_temp!(sum_temp)
-        force_k_sum_1!(k_set, q, z_list, container, sum_temp, element)
-        force_k_sum_2!(k_set, q, z_list, container, sum_temp, element)
-        force_k_sum_3!(k_set, q, z_list, container, sum_temp, element)
-        force_k_sum_4!(k_set, q, z_list, container, sum_temp, element)
+        force_long_k!(k_set, q, z_list, container, sum_temp, element)
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
         acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+    end
+
+    return nothing
+end
+
+function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+
+    n_atoms = size(coords)[1]
+    L_x, L_y, L_z = L
+    k_0 = log(γ_1 * γ_2) / (2 * L_z)
+
+    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+
+    element = GreensElement(γ_1, γ_2, L_z, one(T))
+    container = Container{T}(n_atoms)
+    container_k0 = Container{T}(n_atoms)
+
+    sum_temp = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+    sum_temp_k0 = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+
+    for i in 1:rbe_p
+        k_set = K_set[rand(1:size(K_set)[1])]
+        k_x, k_y, k = k_set
+        kn0_angle = ringangles.ring_angles[nearest_angle_indice(k_x, k_y, ringangles.ring_angles)]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+
+        update_container!(container, k_set, n_atoms, L_z, coords)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+
+        erase_sum_temp!(sum_temp)
+        erase_sum_temp!(sum_temp_k0)
+
+        force_long_k!(k_set, q, z_list, container, sum_temp, element)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+
+        sum_temp .-= sum_temp_k0
+
+        β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
+        acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+    end
+
+    # the divergent part
+    for sector_id in 1:length(ringangles.ring_angles) - 1
+        kn0_angle = ringangles.ring_angles[sector_id]
+        kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
+        update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
+        erase_sum_temp!(sum_temp_k0)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+
+        acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
     end
 
     return nothing
@@ -269,12 +382,30 @@ function force_k_sum_4!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, c
     return nothing
 end
 
-function force_direct_sum(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, L_z::T, γ_1::T, γ_2::T) where T
+function force_direct_sum_k0(q::Vector{T}, coords::Vector{Point{3, T}}) where{T <: Number}
+    n_atoms = length(q)
+    sum_direct = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+
+    for i in 1:n_atoms
+        for j in 1:n_atoms
+            zi = coords[i][3]
+            zj = coords[j][3]
+            if j != i
+                qs = q[i] * q[j]
+                sum_direct[i] += Point(zero(T), zero(T), qs * sign(zi - zj))
+            end
+        end
+    end
+
+    return sum_direct
+end
+
+function force_direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, L_z::T, γ_1::T, γ_2::T) where T
     
     k_x, k_y, k = k_set
     n_atoms = length(q)
 
-    sum_direct = [[Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms] for j in 1:4]
+    sum_direct = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
     sumr_1, sumr_2, sumr_3, sumr_4 = [zeros(T, n_atoms) for i in 1:4]
     sumz_1, sumz_2, sumz_3, sumz_4 = [zeros(T, n_atoms) for i in 1:4]
     for i in 1:n_atoms
@@ -296,15 +427,42 @@ function force_direct_sum(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Poin
         end
     end
     
-    sum_x = - (k_x / k) .* [sumr_1, sumr_2, sumr_3, sumr_4]
-    sum_y = - (k_y / k) .* [sumr_1, sumr_2, sumr_3, sumr_4]
-    sum_z = [sumz_1, sumz_2, sumz_3, sumz_4]
+    sum_x = - (k_x / k) .* (sumr_1 + sumr_2 + sumr_3 + sumr_4)
+    sum_y = - (k_y / k) .* (sumr_1 + sumr_2 + sumr_3 + sumr_4)
+    sum_z = (sumz_1 + sumz_2 + sumz_3 + sumz_4)
 
-    for i in 1:4
-        for j in 1:n_atoms
-            sum_direct[i][j] = Point(sum_x[i][j], sum_y[i][j], sum_z[i][j])
-        end
+    for j in 1:n_atoms
+        sum_direct[j] += Point(sum_x[j], sum_y[j], sum_z[j])
     end
 
     return sum_direct
+end
+
+function force_direct_sum_total(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number}
+    n_atoms = size(coords)[1]
+
+    acceleration = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+    
+    L_x, L_y, L_z = L
+
+    acceleration .+= force_direct_sum_k0(q, coords) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    
+    n_x_max = Int(round(k_c * L_x / T(2) * π, RoundUp))
+    n_y_max = Int(round(k_c * L_y / T(2) * π, RoundUp))
+
+    for n_x in - n_x_max : n_x_max
+        for n_y in - n_y_max : n_y_max
+            k_x = T(2) * π * n_x / L_x
+            k_y = T(2) * π * n_y / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            k_set = (k_x, k_y, k)
+            if k < k_c && k != 0
+                sum_k = force_direct_sum_k(k_set, q, coords, L_z, γ_1, γ_2)
+                β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
+                acceleration .+= sum_k .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+            end
+        end
+    end
+
+    return acceleration
 end

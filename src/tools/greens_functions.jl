@@ -1,5 +1,3 @@
-export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2, dz_Gamma_self_1, dz_Gamma_self_2
-
 function Gamma_1(k::T, element::GreensElement{T}) where T<:Number
     
     return sum(i -> element.b[i] * exp(- k * element.a[i]), (1, 2, 3, 4)) / T(2)

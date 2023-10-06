@@ -1,5 +1,3 @@
-export Gauss_int, Gauss_int_Tuple
-
 @inline function Gauss_int(integrand::Function, Gaussian::GaussParameter{T}, para::GreensElement{T}; region::NTuple{2, T} = (-1.0, 1.0)) where {T <: Number}
 
     a, b = region

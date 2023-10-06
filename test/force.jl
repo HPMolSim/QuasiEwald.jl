@@ -10,19 +10,6 @@
 
     info = SimulationInfo(n_atoms, atoms, (0.0, L, 0.0, L, 0.0, 10.0), boundary; min_r = 1.0, temp = 1.0)
 
-    # interactions = [(LennardJones(), CellListDir3D(info, 4.5, boundary, 100))]
-    # loggers = [TempartureLogger(100, output = false)]
-    # simulator = VerletProcess(dt = 0.001, thermostat = AndersenThermoStat(1.0, 0.05))
-
-    # sys = MDSys(
-    #     n_atoms = n_atoms,
-    #     atoms = atoms,
-    #     boundary = boundary,
-    #     interactions = interactions,
-    #     loggers = loggers,
-    #     simulator = simulator
-    # )
-
     for (γ_1, γ_2) in [(0.0, 0.0), (0.4, 0.5), (0.4, -0.5), (-0.4, -0.5)]
         ϵ_0 = 1.0
         n_t = 100
