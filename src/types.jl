@@ -1,5 +1,3 @@
-export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, SortingFinder
-
 struct IcmSys{T, R}
     γ::NTuple{2, T} # (γ_up, γ_down)
     L::NTuple{3, T} # (Lx, Ly, Lz)
@@ -60,6 +58,87 @@ function GreensElement(γ_1::T, γ_2::T, z_i::T, z_j::T, ρ::T, L_z::T, α::T, a
     return GreensElement{T}(γ_1, γ_2, ρ, a, b, sign_a, L_z, α, k_f1, k_f2)
 end
 
+struct RingAngles{T}
+    ring_angles::Vector{T}
+    sectors_sum::Vector{T}
+end
+
+function RingAngles(k_0::T, L_x::T, L_y::T, L_z::T, α::T, k_c::T, Δk::T) where{T}
+    ring_angles = Vector{T}()
+    nx_max = ceil(Int, k_0 * L_x / 2π) + 2
+    ny_max = ceil(Int, k_0 * L_y / 2π) + 2
+
+    push!(ring_angles, -π)
+    for nx in - nx_max : nx_max
+        for ny in - ny_max : ny_max
+            k_x = nx * 2π / L_x
+            k_y = ny * 2π / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            if abs(k - k_0) < Δk
+                θ = atan(k_y, k_x)
+                push!(ring_angles, θ)
+            end
+        end
+    end
+    sort!(ring_angles)
+
+    sectors_sum = zeros(T, length(ring_angles) - 1)
+
+    nxc_max = ceil(Int, k_c * L_x / 2π) + 1
+    nyc_max = ceil(Int, k_c * L_y / 2π) + 1
+
+    for nx in - nxc_max : nxc_max
+        for ny in - nyc_max : nyc_max
+            k_x = nx * 2π / L_x
+            k_y = ny * 2π / L_y
+            k = sqrt(k_x^2 + k_y^2)
+            if 0 < k <= k_c 
+                nearest_id = nearest_angle_indice(k_x, k_y, ring_angles)
+                sectors_sum[nearest_id] += exp(- k^2 / (4 * α)) / (exp(- 2 * (k - k_0) * L_z) - 1)
+            end
+        end
+    end
+
+    return RingAngles{T}(ring_angles, sectors_sum)
+end
+
+function RingAngles(k_0::T) where{T}
+    return RingAngles{T}(Vector{T}(), Vector{T}())
+end
+
+function nearest_angle_indice(k_x::T, k_y::T, ring_angles::Vector{T}) where{T}
+    θ_k = atan(k_y, k_x)
+    θ_ring = ring_angles
+
+    low = 1
+    high = length(θ_ring)
+    closest = θ_ring[low]
+    id = 1
+
+    while low <= high
+        mid = low + (high - low) ÷ 2
+        if θ_ring[mid] == θ_k
+            id = mid
+            break
+        elseif θ_ring[mid] < θ_k
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+
+        if abs(θ_ring[mid] - θ_k) < abs(closest - θ_k)
+            closest = θ_ring[mid]
+            id = mid
+        end
+    end
+
+    if id == length(θ_ring)
+        id = 1
+    end
+
+    return id
+end
+
 struct QuasiEwaldShortInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     # common used part
     γ_1::T
@@ -95,13 +174,24 @@ struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     rbe_p::TI
     sum_k::T
     K_set::Vector{NTuple{3, T}}
-    # Prob::ProbabilityWeights{T, T, Vector{T}}
+
+    # divergent part
+    k_0::T
+    ringangles::RingAngles{T}
 end
 
-function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI) where{T<:Number, TI<:Integer}
+function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where{T<:Number, TI<:Integer}
     K_set, sum_k = rbe_sampling(L, α, accuracy)
+    
+    if γ_1 * γ_2 ≥ one(T)
+        k_0 = log(γ_1 * γ_2) / (2 * L[3])
+        ringangles = RingAngles(k_0, L[1], L[2], L[3], α, k_c, Δk)
+    else
+        k_0 = zero(T)
+        ringangles = RingAngles(k_0)
+    end
 
-    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set)
+    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles)
 end
 
 mutable struct SortingFinder{T, TI} <: ExTinyMD.AbstractNeighborFinder

@@ -10,5 +10,5 @@ using SpecialFunctions
     include("energy.jl")
     include("force_long.jl")
     include("energy_long.jl")
-    # include("test_simulate.jl")
+    include("simulate.jl")
 end

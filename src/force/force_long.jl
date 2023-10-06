@@ -1,12 +1,14 @@
-export QuasiEwald_Fl!, force_long_total!, force_long_sampling!, force_direct_sum_k, force_long_k!, force_direct_sum_k0, force_k_sum_0, force_direct_sum_total
-
 function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
 
     q = [atom.charge for atom in atoms]
     mass = [atom.mass for atom in atoms]
 
     if interaction.rbe == true
-        force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+        if interaction.k_0 > 0
+            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
+        else
+            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+        end
     else
         force_long_total!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
@@ -139,7 +141,6 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
 end
 
 function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
-    @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L

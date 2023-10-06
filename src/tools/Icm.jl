@@ -1,5 +1,3 @@
-export IcmSysInit, IcmEnergy, IcmForce
-
 function IcmSysInit(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}) where T <: Number
     # @assert sum(charge) == 0
     γ_up = sys.γ[1]
