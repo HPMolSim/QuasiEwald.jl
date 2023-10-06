@@ -1,7 +1,7 @@
 name = "QuasiEwald"
 uuid = "983f8767-50b7-4083-a328-dfb7a9c26de7"
 authors = ["Xuanzhao Gao"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 CellListMap = "69e1c6dd-3888-40e6-b3c8-31ac5f578864"
