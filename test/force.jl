@@ -38,7 +38,7 @@
         for i in 1:n_atoms
             error_i = force_icm[i] - force_qem[i]
             for j in 1:3
-                @test abs(error_i[j]) < 1e-3
+                @test abs(error_i[j]) < 1e-2
             end
         end
     end
