@@ -15,7 +15,7 @@ pkg> add ExTinyMD, QuasiEwald
 in your command lines.
 
 Here is an simple example, which will calculate the interaction between two paricle confined by dielectric substrate of different dielectric permittivity.
-```
+```julia
 using Plots, ExTinyMD, QuasiEwald
 
 begin
@@ -84,7 +84,7 @@ The result is shown below:
 
 
 Here is another example, which shows how to simulate a dielectric confined charged system via `ExTinyMD.jl` and `QuasiEwald.jl`.
-```
+```julia
 using ExTinyMD, QuasiEwald
 
 begin
