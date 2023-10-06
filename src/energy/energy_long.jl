@@ -5,7 +5,7 @@ struct RingAngles{T}
     sectors_sum::Vector{T}
 end
 
-function RingAngles(k_0::T, L_x::T, L_y::T, L_z::T, α::T, k_c::T) where{T}
+function RingAngles(k_0::T, L_x::T, L_y::T, L_z::T, α::T, k_c::T, Δk::T) where{T}
     ring_angles = Vector{T}()
     nx_max = ceil(Int, k_0 * L_x / 2π) + 2
     ny_max = ceil(Int, k_0 * L_y / 2π) + 2
@@ -16,7 +16,7 @@ function RingAngles(k_0::T, L_x::T, L_y::T, L_z::T, α::T, k_c::T) where{T}
             k_x = nx * 2π / L_x
             k_y = ny * 2π / L_y
             k = sqrt(k_x^2 + k_y^2)
-            if abs(k - k_0) < π / sqrt(L_x * L_y)
+            if abs(k - k_0) < Δk
                 θ = atan(k_y, k_x)
                 push!(ring_angles, θ)
             end
@@ -410,7 +410,7 @@ function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
-    green_element = GreensElement(γ_1, γ_2, L_z, α)
+    green_element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
 
     sum_k0 = energy_k_sum_0(q, coords, z_list)
@@ -440,7 +440,7 @@ function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::
     sum_smooth = zero(T)
     sum_div = zero(T)
 
-    green_element = GreensElement(γ_1, γ_2, L_z, α)
+    green_element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
     container_k0 = Container{T}(n_atoms)
     
