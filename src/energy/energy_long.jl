@@ -29,13 +29,18 @@ end
 
 function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
     update_finder!(neighbor, info)
+
+    atoms = sys.atoms
     
-    q = [atom.charge for atom in sys.atoms]
+    for i in 1:length(interaction.q)
+        interaction.q[i] = atoms[info.particle_info[i].id].charge
+        interaction.coords[i] = info.particle_info[i].position
+    end
 
     if interaction.rbe == true
-        return energy_sum_sampling(q, info.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
+        return energy_sum_sampling(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
     else
-        return energy_sum_total(q, info.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+        return energy_sum_total(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
 end
 

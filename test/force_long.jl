@@ -1,7 +1,7 @@
 @testset "compare sort sum with direct sum" begin
     n_atoms = 100
-    q = 2 .* randn(n_atoms) .- 1.0
-    q = q .- sum(q) / n_atoms
+    q0 = 2 .* randn(n_atoms) .- 1.0
+    q0 = q0 .- sum(q0) / n_atoms
     ϵ_0 = 1.0
     α = 1.0
     k_c = 1.1
@@ -14,15 +14,16 @@
     boundary = ExTinyMD.Q2dBoundary(Lx, Ly, Lz)
     atoms = Vector{Atom{Float64}}()
     for i in 1:n_atoms
-        push!(atoms, Atom(mass = 1.0, charge = q[i]))
+        push!(atoms, Atom(mass = 1.0, charge = q0[i]))
     end
     info = SimulationInfo(n_atoms, atoms, (0.0, Lx, 0.0, Ly, 0.0, Lz), boundary; min_r = 1.0, temp = 1.0)
 
-    coords = info.coords
+    coords = [p_info.position for p_info in info.particle_info]
     z_coords = [coords[i][3] for i=1:n_atoms]
     z_list = sortperm(z_coords)
 
-    mass = [atoms[i].mass for i in 1:n_atoms]
+    q = [atoms[p_info.id].charge for p_info in info.particle_info]
+    mass = [atoms[p_info.id].mass for p_info in info.particle_info]
 
     T = Float64
 

@@ -178,6 +178,12 @@ struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     # divergent part
     k_0::T
     ringangles::RingAngles{T}
+
+    # charge and coords
+    q::Vector{T}
+    mass::Vector{T}
+    coords::Vector{Point{3, T}}
+    acceleration::Vector{Point{3, T}}
 end
 
 function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where{T<:Number, TI<:Integer}
@@ -191,7 +197,12 @@ function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, r
         ringangles = RingAngles(k_0)
     end
 
-    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles)
+    q = zeros(T, n_atoms)
+    mass = zeros(T, n_atoms)
+    coords = Vector{Point{3, T}}(undef, n_atoms)
+    acceleration = Vector{Point{3, T}}(undef, n_atoms)
+
+    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles, q, mass, coords, acceleration)
 end
 
 mutable struct SortingFinder{T, TI} <: ExTinyMD.AbstractNeighborFinder
@@ -199,8 +210,8 @@ mutable struct SortingFinder{T, TI} <: ExTinyMD.AbstractNeighborFinder
     z_list::Vector{TI}
 end
 
-function SortingFinder(coords::Vector{Point{3, T}}) where {T<: Number}
-    z_coords = [coord[3] for coord in coords]
+function SortingFinder(info::SimulationInfo{T}) where {T<: Number}
+    z_coords = [p_info.position[3] for p_info in info.particle_info]
     z_list = sortperm(z_coords)
     return SortingFinder{T, eltype(z_list)}(z_coords, z_list)
 end
@@ -208,7 +219,7 @@ end
 function ExTinyMD.update_finder!(neighborfinder::T_NIEGHBOR, info::SimulationInfo{T}) where {T<:Number, T_NIEGHBOR <: SortingFinder}
     n_atoms = length(neighborfinder.z_list)
     for i in 1:n_atoms
-        neighborfinder.z_coords[i] = info.coords[i][3]
+        neighborfinder.z_coords[i] = info.particle_info[i].position[3]
     end
     sortperm!(neighborfinder.z_list, neighborfinder.z_coords)
     return nothing
