@@ -1,16 +1,27 @@
-function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, atoms::Vector{ExTinyMD.Atom{T}}, boundary::ExTinyMD.Boundary{T}, coords::Vector{Point{3, T}}, acceleration::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
+function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
 
-    q = [atom.charge for atom in atoms]
-    mass = [atom.mass for atom in atoms]
+    atoms = sys.atoms
+
+    for i in 1:length(interaction.q)
+        interaction.q[i] = atoms[info.particle_info[i].id].charge
+        interaction.mass[i] = atoms[info.particle_info[i].id].mass
+        interaction.coords[i] = info.particle_info[i].position
+    end
+
+     erase_vector_of_point!(interaction.acceleration)
 
     if interaction.rbe == true
         if interaction.k_0 > 0
-            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
+            force_long_sampling!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
         else
-            force_long_sampling!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+            force_long_sampling!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
         end
     else
-        force_long_total!(q, mass, coords, acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+        force_long_total!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+    end
+
+    for i in 1:length(interaction.acceleration)
+        info.particle_info[i].acceleration += interaction.acceleration[i]
     end
 
     return nothing
@@ -46,7 +57,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
             k_set = (k_x, k_y, k)
             if k < k_c && k != 0
                 update_container!(container, k_set, n_atoms, L_z, coords)
-                erase_sum_temp!(sum_temp)
+                erase_vector_of_point!(sum_temp)
                 force_long_k!(k_set, q, z_list, container, sum_temp, element)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
                 acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
@@ -88,8 +99,8 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
 
-                erase_sum_temp!(sum_temp)
-                erase_sum_temp!(sum_temp_k0)
+                erase_vector_of_point!(sum_temp)
+                erase_vector_of_point!(sum_temp_k0)
 
                 force_long_k!(k_set, q, z_list, container, sum_temp, element)
                 force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
@@ -107,7 +118,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
         kn0_angle = ringangles.ring_angles[sector_id]
         kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
-        erase_sum_temp!(sum_temp_k0)
+        erase_vector_of_point!(sum_temp_k0)
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
 
         acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
@@ -131,7 +142,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         k_set = K_set[rand(1:size(K_set)[1])]
         k_x, k_y, k = k_set
         update_container!(container, k_set, n_atoms, L_z, coords)
-        erase_sum_temp!(sum_temp)
+        erase_vector_of_point!(sum_temp)
         force_long_k!(k_set, q, z_list, container, sum_temp, element)
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
         acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
@@ -164,8 +175,8 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         update_container!(container, k_set, n_atoms, L_z, coords)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
 
-        erase_sum_temp!(sum_temp)
-        erase_sum_temp!(sum_temp_k0)
+        erase_vector_of_point!(sum_temp)
+        erase_vector_of_point!(sum_temp_k0)
 
         force_long_k!(k_set, q, z_list, container, sum_temp, element)
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
@@ -181,7 +192,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         kn0_angle = ringangles.ring_angles[sector_id]
         kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
-        erase_sum_temp!(sum_temp_k0)
+        erase_vector_of_point!(sum_temp_k0)
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
 
         acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
@@ -215,9 +226,9 @@ end
 
 # to avoid allocation, force_k_sum_1234 will share the same sum_temp structure to avoid allocations
 
-function erase_sum_temp!(sum_temp::Vector{Point{3, T}}) where T
-    for i in 1:length(sum_temp)
-        sum_temp[i] *= zero(T)
+function erase_vector_of_point!(vecter_of_point::Vector{Point{3, T}}) where T
+    for i in 1:length(vecter_of_point)
+        vecter_of_point[i] = Point(zero(T), zero(T), zero(T))
     end
     return nothing
 end

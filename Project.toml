@@ -1,7 +1,7 @@
 name = "QuasiEwald"
 uuid = "983f8767-50b7-4083-a328-dfb7a9c26de7"
 authors = ["Xuanzhao Gao"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 CellListMap = "69e1c6dd-3888-40e6-b3c8-31ac5f578864"
@@ -17,7 +17,7 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 [compat]
 CellListMap = "0.8"
 Distributions = "0.25"
-ExTinyMD = "0.1"
+ExTinyMD = "0.2"
 GaussQuadrature = "0.5"
 SpecialFunctions = "2.3"
 StaticArrays = "1.6"

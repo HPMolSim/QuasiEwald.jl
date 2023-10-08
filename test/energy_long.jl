@@ -13,7 +13,7 @@
     end
     info = SimulationInfo(n_atoms, atoms, (0.0, Lx, 0.0, Ly, 0.0, Lz), boundary; min_r = 1.0, temp = 1.0)
 
-    coords = info.coords
+    coords = [p_info.position for p_info in info.particle_info]
     z_coords = [coords[i][3] for i=1:n_atoms]
     z_list = sortperm(z_coords)
     for (γ_1, γ_2) in [(0.0, 0.0), (0.4, 0.5), (0.4, -0.5), (-0.4, -0.5)]

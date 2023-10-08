@@ -49,26 +49,27 @@ end
 function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor::CellListDirQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
 
     neighbor_list = neighbor.neighbor_list
-    atoms = sys.atoms
-    coords = info.coords
 
     energy_short = zero(T)
+    atoms = sys.atoms
 
     for (i, j, ρ) in neighbor_list
-        coord_1, coord_2, ρ_sq = position_checkQ2D(coords[i], coords[j], sys.boundary, interaction.r_c)
+        id_i = info.particle_info[i].id
+        id_j = info.particle_info[j].id
+        coord_1, coord_2, ρ_sq = position_checkQ2D(info.particle_info[i].position, info.particle_info[j].position, sys.boundary, interaction.r_c)
         if iszero(ρ_sq)
             nothing
         else
             element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
-            q_1 = atoms[i].charge
-            q_2 = atoms[j].charge
+            q_1 = atoms[id_i].charge
+            q_2 = atoms[id_j].charge
             energy_short += QuaisEwald_Es_pair(q_1, q_2, interaction.ϵ_0, element, interaction.gauss_para; single_mode = single_mode)
         end
     end
 
-    for i in 1:interaction.n_atoms
-        element = GreensElement(interaction.γ_1, interaction.γ_2, coords[i][3], interaction.L[3], interaction.α, interaction.accuracy)
-        q = atoms[i].charge
+    for p_info in info.particle_info
+        element = GreensElement(interaction.γ_1, interaction.γ_2, p_info.position[3], interaction.L[3], interaction.α, interaction.accuracy)
+        q = atoms[p_info.id].charge
         energy_short += QuaisEwald_Es_self(q, interaction.ϵ_0, element, interaction.gauss_para; single_mode = single_mode)
     end
 
