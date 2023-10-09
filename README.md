@@ -70,7 +70,6 @@ begin
     end
 
     plot(dpi = 300, size = (800, 600), legend = :topright, xlabel = "x", ylabel = "force_x")
-    plot(dpi = 300, size = (800, 600), legend = :topright, xlabel = "x", ylabel = "force_x")
     for (γ, force_x) in zip([0.0, 0.95, -0.95, 10.0, -10.0], Force_x)
         plot!(X, force_x, label = "γ = " * string(γ), ylim = [-0.06, 0.06])
     end
