@@ -3,7 +3,7 @@ using Plots, ExTinyMD, QuasiEwald
 begin
     n_atoms = 2
     L = 180.0
-    boundary = ExTinyMD.Q2dBoundary(L, L, 10.0)
+    boundary = ExTinyMD.Q2dBoundary(L, L, 10.0) 
 
     atoms = [Atom(type = 1, mass = 1.0, charge = 1.0), Atom(type = 2, mass = 1.0, charge = -1.0)]
 
