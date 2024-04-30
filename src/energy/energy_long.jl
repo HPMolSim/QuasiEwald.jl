@@ -1,17 +1,20 @@
 mutable struct Container{T}
+    A::Vector{Complex{T}}
     C1::Vector{T}
     S1::Vector{T}
     C2::Vector{T}
     S2::Vector{T}
     COS_list::Vector{T}
     SIN_list::Vector{T}
+    EXP_P_list::Vector{Complex{T}}
+    EXP_N_list::Vector{Complex{T}}
     EXP_list_1::Vector{T}
     EXP_list_2::Vector{T}
     EXP_list_3::Vector{T}
     EXP_list_4::Vector{T}
 end
 
-Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms), zeros(n_atoms))
+Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms))
 
 function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
     k_x, k_y, k = k_set
@@ -19,6 +22,8 @@ function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms
         coord = coords[i]
         container.COS_list[i] = cos(k_x * coord[1] + k_y * coord[2])
         container.SIN_list[i] = sin(k_x * coord[1] + k_y * coord[2])
+        container.EXP_P_list[i] = exp(1.0im * (k_x * coord[1] + k_y * coord[2]))
+        container.EXP_N_list[i] = exp(- 1.0im * (k_x * coord[1] + k_y * coord[2]))
         container.EXP_list_1[i] = exp(k * coord[3])
         container.EXP_list_2[i] = exp( - k * coord[3])
         container.EXP_list_3[i] = exp( - k * (2 * L_z - coord[3]))
@@ -76,7 +81,7 @@ end
     γ_1 = element.γ_1
     γ_2 = element.γ_2
 
-    sum_1 = energy_k_sum_1(q, z_list, container)
+    sum_1 = energy_k_sum_1(q, k, z_list, coords, container)
     sum_2 = energy_k_sum_2(q, z_list, container)
     sum_3 = energy_k_sum_3(q, z_list, container)
     sum_4 = energy_k_sum_4(q, z_list, container)
@@ -84,56 +89,39 @@ end
     return (sum_1 + γ_1 * γ_2 * sum_2 + γ_1 * sum_3 + γ_2 * sum_4)
 end
 
-@inbounds function energy_k_sum_1(q::Vector{T}, z_list::Vector{TI}, container::Container{T}) where {T <: Number, TI <: Integer}
+@inbounds function energy_k_sum_1(q::Vector{T}, k::T, z_list::Vector{TI}, coords::Vector{Point{3, T}}, container::Container{T}) where {T <: Number, TI <: Integer}
     n_atoms = length(z_list)
 
-    COS_list = container.COS_list
-    SIN_list = container.SIN_list
-    EXP_list_1 = container.EXP_list_1
-    EXP_list_2 = container.EXP_list_2
+    EXP_P_list = container.EXP_P_list
+    EXP_N_list = container.EXP_N_list
+    A = container.A
 
-    C1 = container.C1
-    C2 = container.C2
-    S1 = container.S1
-    S2 = container.S2
+    A[1] = zero(Complex{T})
+    j0 = z_list[1]
+    A[2] = q[j0] * EXP_N_list[j0]
 
-    C1[1] = zero(T)
-    S1[1] = zero(T)
-    C2[end] = zero(T)
-    S2[end] = zero(T)
-
-    #sum_1
-    sum_1 = zero(T)
-    for i in 1:n_atoms-1
-        #forward process
-        lf = z_list[i]
-        q_lf = q[lf]
-        forward_val = q_lf * EXP_list_1[lf]
-        C1[i + 1] = C1[i] + forward_val * COS_list[lf]
-        S1[i + 1] = S1[i] + forward_val * SIN_list[lf]
-    
-        #backward process
-        back_i = n_atoms - i
-        lb = z_list[back_i + 1]
-        q_lb = q[lb]
-        backward_val = q_lb * EXP_list_2[lb]
-        C2[back_i] = C2[back_i + 1] + backward_val * COS_list[lb]
-        S2[back_i] = S2[back_i + 1] + backward_val * SIN_list[lb]
+    for i in 3:n_atoms
+        j = z_list[i - 1]
+        l = z_list[i - 2]
+        zl = coords[l][3]
+        zj = coords[j][3]
+        A[i] = A[i - 1] * exp(k * (zl - zj)) + q[j] * EXP_N_list[j]
     end
 
-    # sum = \sum_i q_i cos(k \rho_i)(exp(k z_i) C1[i] + exp(-k z_i) C2[i]) +
-    #              q_i sin(k \rho_i)(exp(k z_i) S1[i] + exp(-k z_i) S2[i])
+    sum_1 = zero(Complex{T})
+    for i in 2:n_atoms
+        j = z_list[i]
+        l = z_list[i - 1]
+        zj = coords[j][3]
+        zl = coords[l][3]
+        sum_1 += 2 * q[j] * EXP_P_list[j] * exp(- k * (zj - zl)) * A[i]
+    end
+
     for i in 1:n_atoms
-        l = z_list[i]
-        q_l = q[l]
-        sum_1 += q_l * (
-            COS_list[l] * (EXP_list_2[l] * C1[i] + EXP_list_1[l] * C2[i]) + 
-            SIN_list[l] * (EXP_list_2[l] * S1[i] + EXP_list_1[l] * S2[i]) + 
-            q_l
-        )
+        sum_1 += q[i]^2
     end
 
-    return sum_1
+    return real(sum_1)
 end
 
 @inbounds function energy_k_sum_2(q::Vector{T}, z_list::Vector{TI}, container::Container{T}) where {T <: Number, TI <: Integer}
@@ -315,8 +303,8 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
                 β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
-                sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(k_set, q, coords, z_list, green_element, container_k0) / k_0) * β
-                sum_smooth += sum_k * exp(- k*k / (4 * α))
+                sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(kn0_set, q, coords, z_list, green_element, container_k0) / k_0) * β
+                sum_smooth += sum_k * exp(- k^2 / (4 * α))
             end
         end
     end
@@ -401,12 +389,7 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
-    sum_k0 = zero(T)
-    for i in 1:n_atoms
-        for j in 1:n_atoms
-            sum_k0 += q[i] * q[j] * abs(coords[i][3] - coords[j][3])
-        end
-    end
+    sum_k0 = direct_sum_k_0(q, coords)
     
     sum_k = zero(T)
     n_x_max = trunc(Int, k_c * L_x / 2 * π)
@@ -418,23 +401,8 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3
             k_y = 2 * π * n_y / L_y
             k = sqrt(k_x^2 + k_y^2)
             if k < k_c && k != 0
-                beta = (γ_1 * γ_2 * exp(-2 * k * L_z) - 1)
-                sum_1 = 0
-                sum_2 = 0
-                sum_3 = 0
-                sum_4 = 0
-                for i in 1:n_atoms
-                    for j in 1:n_atoms
-                        xi, yi, zi = coords[i]
-                        xj, yj, zj = coords[j]
-                        qc = q[i] * q[j] *  cos(k_x * (xi - xj) + k_y * (yi - yj)) / (beta * k)
-                        sum_1 += qc * exp(-k * abs(zi - zj)) 
-                        sum_2 += γ_1 * qc * exp(-k * (zi + zj)) 
-                        sum_3 += γ_2 * qc * exp(-k * (2 * L_z - zi - zj))
-                        sum_4 += γ_1 * γ_2 * qc * exp(-k * (2 * L_z - abs(zi - zj)))
-                    end
-                end
-                sum_k += (sum_1 + sum_2 + sum_3 + sum_4) * exp(-k^2 / (4 * α))
+                t = direct_sum_k((k_x, k_y, k), q, coords, GreensElement(γ_1, γ_2, L_z, α))
+                sum_k += t * exp(-k^2 / (4 * α))
             end
         end
     end
