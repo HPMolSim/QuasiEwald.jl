@@ -303,8 +303,8 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
                 β = 1 / (γ_1 * γ_2 * exp(- 2 * k * L_z) - 1)
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
-                sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(k_set, q, coords, z_list, green_element, container_k0) / k_0) * β
-                sum_smooth += sum_k * exp(- k*k / (4 * α))
+                sum_k = (energy_k_sum(k_set, q, coords, z_list, green_element, container) / k - energy_k_sum(kn0_set, q, coords, z_list, green_element, container_k0) / k_0) * β
+                sum_smooth += sum_k * exp(- k^2 / (4 * α))
             end
         end
     end
