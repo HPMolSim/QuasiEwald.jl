@@ -31,7 +31,7 @@
             force_icm = IcmForce(ICM_sys, coords, charge, ref_pos, ref_charge) ./ ϵ_0
 
             interactions = [(LennardJones(), CellListDir3D(info, 4.5, boundary, 100))]
-            loggers = [TempartureLogger(100, output = false)]
+            loggers = [TemperatureLogger(100, output = false)]
             simulator = VerletProcess(dt = 0.001, thermostat = AndersenThermoStat(1.0, 0.05))
 
             sys = MDSys(
