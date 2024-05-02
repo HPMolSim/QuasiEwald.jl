@@ -133,21 +133,32 @@ end
 function QuasiEwald_Fs!(interaction::QuasiEwaldShortInteraction{T, TI}, neighborfinder::CellListQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
 
     atoms = sys.atoms
+    n_atoms = length(atoms)
+    psize = div(n_atoms, nprocs())
     
-    for (i, j, ρ) in neighborfinder.neighbor_list
-        id_i = info.particle_info[i].id
-        id_j = info.particle_info[j].id
-        coord_1, coord_2, ρ_sq = position_checkQ2D(info.particle_info[i].position, info.particle_info[j].position, sys.boundary, interaction.r_c)
-        if iszero(ρ_sq)
-            nothing
-        else
-            element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
-            q_1 = atoms[id_i].charge
-            q_2 = atoms[id_j].charge
-            force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para)
-            info.particle_info[i].acceleration += force_i / atoms[id_i].mass
-            info.particle_info[j].acceleration += force_j / atoms[id_j].mass
+    accelerations = @distributed (+) for pid in 1:nprocs()
+        sum_temp = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
+        for k in (pid-1)*psize+1:min(pid*psize, n_atoms)
+            i, j, ρ0 = neighborfinder.neighbor_list[k]
+            id_i = info.particle_info[i].id
+            id_j = info.particle_info[j].id
+            coord_1, coord_2, ρ_sq = position_checkQ2D(info.particle_info[i].position, info.particle_info[j].position, sys.boundary, interaction.r_c)
+            if iszero(ρ_sq)
+                nothing
+            else
+                element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
+                q_1 = atoms[id_i].charge
+                q_2 = atoms[id_j].charge
+                force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para)
+                sum_temp[i] += force_i / atoms[id_i].mass
+                sum_temp[j] += force_j / atoms[id_j].mass
+            end
         end
+        sum_temp
+    end
+
+    for i in 1:n_atoms
+        info.particle_info[i].acceleration += accelerations[i]
     end
 
     for p_info in info.particle_info

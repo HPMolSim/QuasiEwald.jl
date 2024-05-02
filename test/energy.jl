@@ -38,7 +38,7 @@
         k_c = sqrt(-4 * α * log(accuracy))
 
         sortz = SortingFinder(info)
-        cellq2d = CellListDirQ2D(info, r_c, boundary, 1)
+        cellq2d = CellListQ2D(info, r_c, boundary, 1)
         interaction_short = QuasiEwaldShortInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, r_c, n_t)
         interaction_long = QuasiEwaldLongInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, k_c, 0)
 
