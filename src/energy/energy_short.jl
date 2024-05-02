@@ -46,7 +46,7 @@ function Es_point_core(element::GreensElement{T}) where {T<:Number}
     return E_s_p
 end
 
-function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor::CellListDirQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
+function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor::CellListQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
 
     neighbor_list = neighbor.neighbor_list
 
