@@ -136,16 +136,15 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
 
     element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
-    sum_temp = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
 
-    for i in 1:rbe_p
+    acceleration .+= @distributed (+) for i in 1:rbe_p
         k_set = K_set[rand(1:size(K_set)[1])]
         k_x, k_y, k = k_set
         update_container!(container, k_set, n_atoms, L_z, coords)
-        erase_vector_of_point!(sum_temp)
+        sum_temp = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
         force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-        acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
     end
 
     return nothing
@@ -163,10 +162,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
     container = Container{T}(n_atoms)
     container_k0 = Container{T}(n_atoms)
 
-    sum_temp = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
-    sum_temp_k0 = [Point(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
-
-    for i in 1:rbe_p
+    acceleration .+= @distributed (+) for i in 1:rbe_p
         k_set = K_set[rand(1:size(K_set)[1])]
         k_x, k_y, k = k_set
         kn0_angle = ringangles.ring_angles[nearest_angle_indice(k_x, k_y, ringangles.ring_angles)]
@@ -175,8 +171,8 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         update_container!(container, k_set, n_atoms, L_z, coords)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
 
-        erase_vector_of_point!(sum_temp)
-        erase_vector_of_point!(sum_temp_k0)
+        sum_temp = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
+        sum_temp_k0 = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
 
         force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
@@ -184,18 +180,17 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         sum_temp .-= sum_temp_k0
 
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-        acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
     end
 
     # the divergent part
-    for sector_id in 1:length(ringangles.ring_angles) - 1
+    acceleration .+= @distributed (+) for sector_id in 1:length(ringangles.ring_angles) - 1
         kn0_angle = ringangles.ring_angles[sector_id]
         kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
-        erase_vector_of_point!(sum_temp_k0)
+        sum_temp_k0 = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
-
-        acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
+        sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
     end
 
     return nothing

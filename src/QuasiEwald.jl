@@ -1,7 +1,7 @@
 module QuasiEwald
 
 # these are packages to be used in this package
-using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, Distributions, Random, StaticArrays, StatsBase
+using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, Distributions, Random, StaticArrays, StatsBase, Distributed
 
 export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, SortingFinder
 export RBE_α, QuasiEwaldRbeInit
