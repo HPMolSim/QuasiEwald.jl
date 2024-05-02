@@ -27,8 +27,8 @@ function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborf
     return nothing
 end
 
-function force_long_k!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp::Vector{Point{3, T}}, element::GreensElement{T}) where {T <: Number, TI <: Integer}
-    force_k_sum_1!(k_set, q, z_list, container, sum_temp, element)
+function force_long_k!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp::Vector{Point{3, T}}, element::GreensElement{T}, coords::Vector{Point{3, T}}) where {T <: Number, TI <: Integer}
+    force_k_sum_1!(k_set, q, z_list, container, sum_temp, coords)
     force_k_sum_2!(k_set, q, z_list, container, sum_temp, element)
     force_k_sum_3!(k_set, q, z_list, container, sum_temp, element)
     force_k_sum_4!(k_set, q, z_list, container, sum_temp, element)
@@ -58,7 +58,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
             if k < k_c && k != 0
                 update_container!(container, k_set, n_atoms, L_z, coords)
                 erase_vector_of_point!(sum_temp)
-                force_long_k!(k_set, q, z_list, container, sum_temp, element)
+                force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
                 acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
             end
@@ -102,8 +102,8 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
                 erase_vector_of_point!(sum_temp)
                 erase_vector_of_point!(sum_temp_k0)
 
-                force_long_k!(k_set, q, z_list, container, sum_temp, element)
-                force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+                force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
+                force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
 
                 sum_temp .-= sum_temp_k0
 
@@ -119,7 +119,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords::Vector{Point{3
         kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
         erase_vector_of_point!(sum_temp_k0)
-        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
 
         acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
     end
@@ -143,7 +143,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         k_x, k_y, k = k_set
         update_container!(container, k_set, n_atoms, L_z, coords)
         erase_vector_of_point!(sum_temp)
-        force_long_k!(k_set, q, z_list, container, sum_temp, element)
+        force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
         acceleration .+= sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
     end
@@ -178,8 +178,8 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         erase_vector_of_point!(sum_temp)
         erase_vector_of_point!(sum_temp_k0)
 
-        force_long_k!(k_set, q, z_list, container, sum_temp, element)
-        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+        force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
 
         sum_temp .-= sum_temp_k0
 
@@ -193,7 +193,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords::Vector{Poin
         kn0_set = (k_0 * cos(kn0_angle), k_0 * sin(kn0_angle), k_0)
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
         erase_vector_of_point!(sum_temp_k0)
-        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element)
+        force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
 
         acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
     end
@@ -233,55 +233,61 @@ function erase_vector_of_point!(vecter_of_point::Vector{Point{3, T}}) where T
     return nothing
 end
 
-function force_k_sum_1!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp::Vector{Point{3, T}}, element::GreensElement{T}) where {T <: Number, TI <: Integer}
+function force_k_sum_1!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp::Vector{Point{3, T}}, coords::Vector{Point{3, T}}) where {T <: Number, TI <: Integer}
     n_atoms = length(z_list)
     k_x, k_y, k = k_set
 
-    COS_list = container.COS_list
-    SIN_list = container.SIN_list
-    EXP_list_1 = container.EXP_list_1
-    EXP_list_2 = container.EXP_list_2
+    EXP_P_list = container.EXP_P_list
+    EXP_N_list = container.EXP_N_list
+    A = container.A
+    B = container.B
 
-    C1 = container.C1
-    C2 = container.C2
-    S1 = container.S1
-    S2 = container.S2
+    A[1] = zero(Complex{T})
+    j0 = z_list[1]
+    A[2] = q[j0] * EXP_N_list[j0]
 
-    C1[1] = zero(T)
-    S1[1] = zero(T)
-    C2[end] = zero(T)
-    S2[end] = zero(T)
-
-    for i in 1:n_atoms-1
-        #forward process
-        lf = z_list[i]
-        q_lf = q[lf]
-        forward_val = q_lf * EXP_list_1[lf]
-        C1[i + 1] = C1[i] + forward_val * COS_list[lf]
-        S1[i + 1] = S1[i] + forward_val * SIN_list[lf]
-    
-        #backward process
-        back_i = n_atoms - i
-        lb = z_list[back_i + 1]
-        q_lb = q[lb]
-        backward_val = q_lb * EXP_list_2[lb]
-        C2[back_i] = C2[back_i + 1] + backward_val * COS_list[lb]
-        S2[back_i] = S2[back_i + 1] + backward_val * SIN_list[lb]
+    for i in 3:n_atoms
+        j = z_list[i - 1]
+        l = z_list[i - 2]
+        zl = coords[l][3]
+        zj = coords[j][3]
+        A[i] = A[i - 1] * exp(k * (zl - zj)) + q[j] * EXP_N_list[j]
     end
 
-    for i in 1:n_atoms
-        l = z_list[i]
-        q_l = q[l]
-        sum_ri = - q_l * (
-            SIN_list[l] * (EXP_list_2[l] * C1[i] + EXP_list_1[l] * C2[i]) -
-            COS_list[l] * (EXP_list_2[l] * S1[i] + EXP_list_1[l] * S2[i]) )
+    B[n_atoms] = zero(Complex{T})
+    jn = z_list[n_atoms]
+    B[n_atoms - 1] = q[jn] * EXP_N_list[jn]
 
-        sum_zi = q_l * (
-            COS_list[l] * ( - EXP_list_2[l] * C1[i] + EXP_list_1[l] * C2[i]) +
-            SIN_list[l] * ( - EXP_list_2[l] * S1[i] + EXP_list_1[l] * S2[i]) )
-
-        sum_temp[l] += Point(k_x * sum_ri / k, k_y * sum_ri / k, sum_zi)
+    for i in n_atoms - 2:-1:1
+        j = z_list[i + 1]
+        l = z_list[i + 2]
+        zl = coords[l][3]
+        zj = coords[j][3]
+        B[i] = B[i + 1] * exp( - k * (zl - zj)) + q[j] * EXP_N_list[j]
     end
+
+    for i in 2:n_atoms
+        j = z_list[i]
+        l = z_list[i - 1]
+        zj = coords[j][3]
+        zl = coords[l][3]
+        t = q[j] * EXP_P_list[j] * exp( - k * (zj - zl)) * A[i]
+        sum_ri = real(1.0im * t)
+        sum_zi = real( - t)
+        sum_temp[j] += Point(k_x * sum_ri / k, k_y * sum_ri / k, sum_zi)
+    end
+
+    for i in 1:n_atoms - 1
+        j = z_list[i]
+        l = z_list[i + 1]
+        zj = coords[j][3]
+        zl = coords[l][3]
+        t = q[j] * EXP_P_list[j] * exp(k * (zj - zl)) * B[i]
+        sum_ri = real(1.0im * t)
+        sum_zi = real(t)
+        sum_temp[j] += Point(k_x * sum_ri / k, k_y * sum_ri / k, sum_zi) 
+    end
+
     return nothing
 end
 

@@ -1,5 +1,6 @@
 mutable struct Container{T}
     A::Vector{Complex{T}}
+    B::Vector{Complex{T}}
     C1::Vector{T}
     S1::Vector{T}
     C2::Vector{T}
@@ -14,7 +15,7 @@ mutable struct Container{T}
     EXP_list_4::Vector{T}
 end
 
-Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms))
+Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms))
 
 function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
     k_x, k_y, k = k_set
@@ -43,7 +44,7 @@ function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::
     end
 
     if interaction.rbe == true
-        return energy_sum_sampling(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.S, interaction.K_set)
+        return energy_sum_sampling(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
     else
         return energy_sum_total(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
