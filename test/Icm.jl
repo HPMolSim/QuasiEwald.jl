@@ -16,5 +16,6 @@
 
     energy_jl = IcmEnergy(sys, position, charge, ref_pos, ref_charge)
     force_jl = IcmForce(sys, position, charge, ref_pos, ref_charge)
-    @test eltype(force_jl) <: Point{3, Float64}
+    # IcmForce no longer depends on ExTinyMD; its accumulator is an SVector now.
+    @test eltype(force_jl) <: SVector{3, Float64}
 end

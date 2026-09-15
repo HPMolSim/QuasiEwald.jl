@@ -2,6 +2,7 @@ using QuasiEwald
 using Test
 using ExTinyMD
 using SpecialFunctions
+using StaticArrays
 
 @testset "QuasiEwald.jl" begin
     include("Icm.jl")

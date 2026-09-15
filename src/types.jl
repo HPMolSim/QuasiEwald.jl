@@ -1,3 +1,30 @@
+# Nearest-image displacement, `dx - L*round(dx/L)`. This package used to rely on
+# ExTinyMD's `position_checkQ2D`, which scans `m ∈ -1:1` and returns the *first*
+# periodic image inside the cutoff (or a sentinel all-zero triple if none is
+# found, forcing every caller to guard with `iszero`) -- correct only while
+# `r_c < L/2`. `_wrap`/`_min_image_q2d` are the true minimum image for any cutoff,
+# and callers test the returned `ρ_sq` explicitly instead of a sentinel.
+@inline _wrap(dx::T, L::T) where {T} = dx - L * round(dx / L)
+
+"""
+    _min_image_q2d(pos_i, pos_j, L) -> (coord_i, coord_j, ρ_sq)
+
+Quasi-2D nearest-image helper: x and y wrap under `L`, z is left as a plain
+difference (it is not periodic in this geometry). Returns `pos_i` shifted to
+its nearest in-plane image of `pos_j`, `pos_j` unchanged, and their squared
+in-plane distance `ρ_sq`. `pos_i`/`pos_j` need only support `p[1]`, `p[2]`,
+`p[3]` indexing (an `SVector{3,T}`, `NTuple{3,T}` or ExTinyMD's `Point{3,T}`
+all qualify).
+"""
+@inline function _min_image_q2d(pos_i, pos_j, L::NTuple{3, T}) where {T}
+    dx = _wrap(T(pos_i[1]) - T(pos_j[1]), L[1])
+    dy = _wrap(T(pos_i[2]) - T(pos_j[2]), L[2])
+    ρ_sq = dx^2 + dy^2
+    coord_i = SVector{3, T}(T(pos_j[1]) + dx, T(pos_j[2]) + dy, T(pos_i[3]))
+    coord_j = SVector{3, T}(T(pos_j[1]), T(pos_j[2]), T(pos_j[3]))
+    return coord_i, coord_j, ρ_sq
+end
+
 struct IcmSys{T, R}
     γ::NTuple{2, T} # (γ_up, γ_down)
     L::NTuple{3, T} # (Lx, Ly, Lz)
@@ -182,8 +209,8 @@ struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     # charge and coords
     q::Vector{T}
     mass::Vector{T}
-    coords::Vector{Point{3, T}}
-    acceleration::Vector{Point{3, T}}
+    coords::Vector{SVector{3, T}}
+    acceleration::Vector{SVector{3, T}}
 end
 
 function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where{T<:Number, TI<:Integer}
@@ -199,8 +226,8 @@ function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, r
 
     q = zeros(T, n_atoms)
     mass = zeros(T, n_atoms)
-    coords = Vector{Point{3, T}}(undef, n_atoms)
-    acceleration = Vector{Point{3, T}}(undef, n_atoms)
+    coords = Vector{SVector{3, T}}(undef, n_atoms)
+    acceleration = Vector{SVector{3, T}}(undef, n_atoms)
 
     return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles, q, mass, coords, acceleration)
 end

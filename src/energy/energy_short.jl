@@ -56,8 +56,8 @@ function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor:
     for (i, j, ρ) in neighbor_list
         id_i = info.particle_info[i].id
         id_j = info.particle_info[j].id
-        coord_1, coord_2, ρ_sq = position_checkQ2D(info.particle_info[i].position, info.particle_info[j].position, sys.boundary, interaction.r_c)
-        if iszero(ρ_sq)
+        coord_1, coord_2, ρ_sq = _min_image_q2d(info.particle_info[i].position, info.particle_info[j].position, interaction.L)
+        if ρ_sq ≥ interaction.r_c^2
             nothing
         else
             element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)

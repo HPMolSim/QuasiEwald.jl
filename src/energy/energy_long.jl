@@ -17,7 +17,7 @@ end
 
 Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms))
 
-function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
+function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords) where {T<:Number, TI<:Integer}
     k_x, k_y, k = k_set
     for i in 1:n_atoms
         coord = coords[i]
@@ -40,7 +40,8 @@ function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::
     
     for i in 1:length(interaction.q)
         interaction.q[i] = atoms[info.particle_info[i].id].charge
-        interaction.coords[i] = info.particle_info[i].position
+        p = info.particle_info[i].position
+        interaction.coords[i] = SVector{3, T}(p[1], p[2], p[3])
     end
 
     if interaction.rbe == true
@@ -50,7 +51,7 @@ function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::
     end
 end
 
-@inbounds function energy_k_sum_0(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
+@inbounds function energy_k_sum_0(q::Vector{T}, coords, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
     n_atoms = length(z_list)
 
     Q_1 = zeros(T, n_atoms)
@@ -73,7 +74,7 @@ end
     return 2 * sum_k_0
 end
 
-@inbounds function energy_k_sum(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, element::GreensElement{T}, container::Container{T}) where{T <: Number, TI<:Integer}
+@inbounds function energy_k_sum(k_set::NTuple{3, T}, q::Vector{T}, coords, z_list::Vector{TI}, element::GreensElement{T}, container::Container{T}) where{T <: Number, TI<:Integer}
     k_x, k_y, k = k_set
     L_z = element.L_z
 
@@ -90,7 +91,7 @@ end
     return (sum_1 + γ_1 * γ_2 * sum_2 + γ_1 * sum_3 + γ_2 * sum_4)
 end
 
-@inbounds function energy_k_sum_1(q::Vector{T}, k::T, z_list::Vector{TI}, coords::Vector{Point{3, T}}, container::Container{T}) where {T <: Number, TI <: Integer}
+@inbounds function energy_k_sum_1(q::Vector{T}, k::T, z_list::Vector{TI}, coords, container::Container{T}) where {T <: Number, TI <: Integer}
     n_atoms = length(z_list)
 
     EXP_P_list = container.EXP_P_list
@@ -241,7 +242,7 @@ end
 end
 
 
-function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
+function energy_sum_total(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -273,7 +274,7 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
 end
 
 # this is a function used to verify our summation method for the divergent cases, assume that γ_1 × γ_2 ≥ 1
-function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function energy_sum_total(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
     @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
@@ -321,7 +322,7 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
     return - (sum_k0 + sum_smooth + sum_div) / (T(4) * L_x * L_y * ϵ_0)
 end
 
-function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
+function energy_sum_sampling(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -343,7 +344,7 @@ function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::
     return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)
 end
 
-function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function energy_sum_sampling(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
     @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
@@ -386,7 +387,7 @@ end
 
 # this are three function used to verify our summation method
 # they do the summation directly instead of by sorting
-function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T}
+function direct_sum_total(q::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -411,7 +412,7 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3
     return -(sum_k0 + sum_k) / (4 * L_x * L_y * ϵ_0)
 end
 
-function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, element::GreensElement{T}) where {T<:Number}
+function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords, element::GreensElement{T}) where {T<:Number}
     n_atoms = size(coords)[1]
     γ_1 = element.γ_1
     γ_2 = element.γ_2
@@ -440,7 +441,7 @@ function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3,
     return sum_k
 end
 
-function direct_sum_k_0(q::Vector{T}, coords::Vector{Point{3, T}}) where{T}
+function direct_sum_k_0(q::Vector{T}, coords) where{T}
     n_atoms = size(coords)[1]
 
     # k = 0 part
