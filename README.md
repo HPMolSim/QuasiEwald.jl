@@ -16,11 +16,18 @@ absence in `[deps]` is why this package no longer requires it just to
 compute an energy.
 
 ```julia
-pkg> add QuasiEwald
+pkg> add https://github.com/ArrogantGao/QuasiEwald.jl
 ```
 
 is enough for standalone use. Add `ExTinyMD` too if you want to drive an MD
 loop (see [MD usage via ExTinyMD](#md-usage-via-extinymd) below).
+
+> **`pkg> add QuasiEwald` will not get you this version.** The General
+> registry's newest QuasiEwald is 0.2.1, from before the decoupling, and this
+> package cannot be registered while its `Project.toml` carries the
+> `[sources]` override described [further down](#a-note-for-anyone-pinning-this-package-against-a-sibling-extinymd-checkout).
+> Install from the repository URL (above), or `pkg> dev` a local checkout,
+> until that override can be removed.
 
 ### Standalone usage (no ExTinyMD)
 
@@ -69,7 +76,9 @@ A few things worth knowing:
   quasi-2D: `x`/`y` are periodic, `z` is not (it is the confined,
   dielectric-bounded axis). The short-range cutoff only ever needs to see
   at most one periodic image per axis; anything ≥ half the box breaks that
-  and is not supported.
+  and is not supported. `QuasiEwaldShortPlan` throws an `ArgumentError`
+  naming the offending `r_c`/`Lx`/`Ly` rather than returning a silently
+  multiply-counted sum.
 - Neither `poses` nor `charges` is ever mutated by a query.
 - **`accuracy` and `n_t` must be tightened together when you care about
   forces.** `accuracy` sets where the k-space integrals are truncated; `n_t`
@@ -89,16 +98,22 @@ A few things worth knowing:
   roughly `60 × accuracy`. `n_t = 30` is enough for energies but not for the
   z-derivative. The energy and the in-plane force components are far less
   sensitive to `n_t` than the z-force is.
-- `QuasiEwaldShortPlan.energy`/`force`/`force!` accept an optional
-  `neighbor_list =` keyword (candidate `(i, j, ...)` pairs -- e.g. a
-  `CellListMap` neighbor list you already maintain); the true in-plane
-  distance is always recomputed from `poses`, so a supplied list's own
-  reported distance is ignored. With none given, every pair is tested
-  directly (`O(n_atoms^2)`) -- this plan does not own a persistent cell
-  list of its own. `QuasiEwaldLongPlan.energy`/`force`/`force!` similarly
-  accept `z_list =` (a z-sort you already have, e.g. from a
-  [`ZSorter`](@ref) you keep across calls) and otherwise sort fresh with
-  `sortperm` each call.
+- `QuasiEwald.energy(::QuasiEwaldShortPlan, poses, charges; ...)` (and
+  likewise `force`/`force!`) accepts an optional `neighbor_list =` keyword
+  (candidate `(i, j, ...)` pairs -- e.g. a `CellListMap` neighbor list you
+  already maintain); the true in-plane distance is always recomputed from
+  `poses`, so a supplied list's own reported distance is ignored. With none
+  given, every pair is tested directly (`O(n_atoms^2)`) -- this plan does
+  not own a persistent cell list of its own. It also accepts
+  `single_mode = false`, which when set to `true` drops the
+  Gaussian-screened part of each pair and self term; the default is the full
+  short-range sum, and it is the only setting that pairs with
+  `QuasiEwaldLongPlan` to give the correct total.
+  `QuasiEwald.energy(::QuasiEwaldLongPlan, poses, charges; ...)` similarly
+  accepts `z_list =` (a z-sort you already have, e.g. from a `ZSorter` you
+  keep across calls -- `ZSorter(poses)` or `ZSorter(z_coords)`, refreshed in
+  place with `update_sorter!`) and otherwise sorts fresh with `sortperm` each
+  call.
 
 ### MD usage via ExTinyMD
 
@@ -130,7 +145,51 @@ simulate!(simulator, sys, info, n_steps)
 
 Calling `QuasiEwaldShortInteraction`/`QuasiEwaldLongInteraction`/
 `SortingFinder` before `using ExTinyMD` raises a clear error naming the
-extension, rather than an `UndefVarError`.
+extension, rather than an `UndefVarError`. If ExTinyMD *is* loaded and the
+error still appears, it says so and points at `Base.retry_load_extensions()`
+-- that case means the extension itself failed to precompile, not that
+`using ExTinyMD` is missing.
+
+`short_finder` must be an `ExTinyMD.CellListQ2D` or `CellListDirQ2D` (both
+select candidate pairs by *in-plane* distance), or a `NoNeighborFinder` to
+fall back to the plan's own `O(n_atoms^2)` pair loop. A 3-D finder
+(`CellList3D`, `CellListDir3D`) is refused with an `ArgumentError`: its list
+is built from 3-D distances and so omits pairs that are close in plane but
+far apart in `z`, which would make the quasi-2D short-range sum silently too
+small.
+
+#### Breaking change: the three exported names are functions, not types
+
+Before the decoupling, `QuasiEwaldShortInteraction`,
+`QuasiEwaldLongInteraction` and `SortingFinder` were `struct`s defined in
+`src/`. They cannot be, any more: a struct's supertype is fixed where the
+struct is defined, and `src/` has no ExTinyMD dependency to name
+`ExTinyMD.AbstractInteraction` with. The real types now live in the
+extension, and the three exported names are *dispatcher functions* that
+forward to them. Consequently:
+
+- **Construction works unchanged.** Every constructor call above behaves
+  exactly as it did before, and the result still
+  `isa ExTinyMD.AbstractInteraction`.
+- **Type-position uses do not work.** `x isa QuasiEwaldShortInteraction`, an
+  `::QuasiEwaldShortInteraction` argument annotation, a
+  `Vector{QuasiEwaldShortInteraction}` element type, and dispatching your own
+  method on one all now raise
+  `TypeError: in isa, expected Type, got a value of type typeof(QuasiEwaldShortInteraction)`.
+
+If you need the type itself, reach into the extension module:
+
+```julia
+using QuasiEwald, ExTinyMD
+ext = Base.get_extension(QuasiEwald, :QuasiEwaldExTinyMDExt)
+
+x isa ext.QuasiEwaldShortInteraction                  # works
+f(x::ext.QuasiEwaldLongInteraction) = ...             # works
+```
+
+The type cannot also be re-exported from `QuasiEwald` under the same name,
+because that exported name is precisely what lets the constructor call
+resolve without ExTinyMD being a hard dependency.
 
 ### A note for anyone pinning this package against a sibling ExTinyMD checkout
 
