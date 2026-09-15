@@ -251,3 +251,138 @@ function ExTinyMD.update_finder!(neighborfinder::T_NIEGHBOR, info::SimulationInf
     sortperm!(neighborfinder.z_list, neighborfinder.z_coords)
     return nothing
 end
+
+# ============================================================================
+# Framework-free plans (Task 3 of the decoupling phase).
+#
+# `QuasiEwaldShortInteraction`/`QuasiEwaldLongInteraction`/`SortingFinder`
+# above are pure parameters (plus, for the long interaction, MD-only scratch:
+# `mass` and `acceleration`) wearing an `ExTinyMD.AbstractInteraction`/
+# `AbstractNeighborFinder` supertype. That supertype is fixed at struct
+# definition and cannot be retrofitted by an extension (see the phase spec's
+# §4.3a), so it must eventually move out of `src/` entirely, into an
+# extension that only exists once ExTinyMD is loaded.
+#
+# `QuasiEwaldShortPlan`/`QuasiEwaldLongPlan`/`ZSorter` below are that
+# replacement: the same physics, no ExTinyMD anywhere, constructed and
+# queried from plain arrays via `QuasiEwald.energy`/`force`/`force!`
+# (defined alongside the rest of the energy/force machinery in
+# energy/energy_short.jl, energy/energy_long.jl, force/force_short.jl,
+# force/force_long.jl). `mass`/`acceleration` do not appear on the long
+# plan: a framework-free solver returns forces and leaves mass-division to
+# the caller, exactly as ExTinyMD's own electrostatics adapter does
+# (../ExTinyMD.jl/src/interactions/electrostatics/adapter.jl).
+#
+# For now both the old MDSys-coupled types above and these plans coexist:
+# this task only adds the plan layer, so the existing test suite (which
+# constructs `QuasiEwaldShortInteraction`/`QuasiEwaldLongInteraction`/
+# `SortingFinder` directly and drives them through `sys.interactions`)
+# keeps working unchanged. The next task deletes the types above from
+# `src/` and recreates them inside `ext/QuasiEwaldExTinyMDExt.jl` as thin
+# wrappers holding one of these plans -- see that file's module docstring
+# for why the *names* stay the same while the *definitions* move.
+# ============================================================================
+
+"""
+    QuasiEwaldShortPlan(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t)
+
+Framework-free short-range (real-space) plan for the quasi-2D Ewald method.
+Pure parameters -- no ExTinyMD dependency, nothing MD-specific. Query with
+[`QuasiEwald.energy`](@ref), [`QuasiEwald.force`](@ref) or
+[`QuasiEwald.force!`](@ref) against plain array-of-structs positions
+(`Vector{SVector{3,T}}` canonical, but anything supporting `p[1]`/`p[2]`/
+`p[3]` indexing works) and a plain charge vector.
+"""
+struct QuasiEwaldShortPlan{T, TI}
+    γ_1::T
+    γ_2::T
+    ϵ_0::T
+    L::NTuple{3, T}
+    rbe::Bool
+    accuracy::T
+    α::T
+    n_atoms::TI
+
+    r_c::T
+    n_t::TI
+    gauss_para::GaussParameter{T}
+end
+
+QuasiEwaldShortPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, r_c::T, n_t::TI) where {T<:Number, TI<:Integer} =
+    QuasiEwaldShortPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t, GaussParameter(n_t))
+
+"""
+    QuasiEwaldLongPlan(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p; Δk = ...)
+
+Framework-free long-range (reciprocal-space) plan for the quasi-2D Ewald
+method. Same parameters as the old `QuasiEwaldLongInteraction`, minus
+`mass`/`coords`/`acceleration`: [`QuasiEwald.force!`](@ref) returns a force,
+not an acceleration, so this plan carries no notion of mass at all. Query
+with [`QuasiEwald.energy`](@ref)/[`QuasiEwald.force`](@ref)/
+[`QuasiEwald.force!`](@ref); pass `z_list =` to reuse a z-sort already
+computed (e.g. by [`ZSorter`](@ref)), or omit it to have the query compute
+its own via `sortperm`.
+"""
+struct QuasiEwaldLongPlan{T, TI}
+    γ_1::T
+    γ_2::T
+    ϵ_0::T
+    L::NTuple{3, T}
+    rbe::Bool
+    accuracy::T
+    α::T
+    n_atoms::TI
+
+    k_c::T
+    rbe_p::TI
+    sum_k::T
+    K_set::Vector{NTuple{3, T}}
+
+    k_0::T
+    ringangles::RingAngles{T}
+end
+
+function QuasiEwaldLongPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where {T<:Number, TI<:Integer}
+    K_set, sum_k = rbe_sampling(L, α, accuracy)
+
+    if γ_1 * γ_2 ≥ one(T)
+        k_0 = log(γ_1 * γ_2) / (2 * L[3])
+        ringangles = RingAngles(k_0, L[1], L[2], L[3], α, k_c, Δk)
+    else
+        k_0 = zero(T)
+        ringangles = RingAngles(k_0)
+    end
+
+    return QuasiEwaldLongPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles)
+end
+
+"""
+    ZSorter(poses) -> ZSorter
+    ZSorter(z_coords::Vector{T}) -> ZSorter
+
+Plan-side z-sorter: the framework-free half of the old `SortingFinder`
+(itself an `ExTinyMD.AbstractNeighborFinder`, which cannot live in `src/`).
+Holds the z-coordinates and their sort permutation, refreshed in place by
+[`update_sorter!`](@ref) so repeated queries in an MD-style loop do not
+reallocate. [`QuasiEwald.energy`](@ref)/[`force`](@ref)/[`force!`](@ref) on
+[`QuasiEwaldLongPlan`](@ref) accept `z_list = sorter.z_list` (or compute
+their own z-sort when no `z_list` is given at all).
+"""
+mutable struct ZSorter{T, TI}
+    z_coords::Vector{T}
+    z_list::Vector{TI}
+end
+
+function ZSorter(poses)
+    z_coords = [p[3] for p in poses]
+    return ZSorter(z_coords, sortperm(z_coords))
+end
+
+"Refresh `sorter` in place from the z-component of `poses` (no reallocation)."
+function update_sorter!(sorter::ZSorter, poses)
+    for i in eachindex(sorter.z_coords)
+        sorter.z_coords[i] = poses[i][3]
+    end
+    sortperm!(sorter.z_list, sorter.z_coords)
+    return sorter
+end

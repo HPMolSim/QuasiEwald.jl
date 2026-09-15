@@ -235,3 +235,61 @@ function QuasiEwald_Fs_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para
     
     return Fsz
 end
+# ============================================================================
+# Framework-free core queries (Task 3).
+# ============================================================================
+
+"Candidate-pair force contribution on `i` and `j`; both zero unless within `r_c_sq` after the true minimum-image correction."
+@inline function _short_pair_force(plan::QuasiEwaldShortPlan{T}, poses, charges, i, j, r_c_sq::T) where {T}
+    coord_1, coord_2, ρ_sq = _min_image_q2d(poses[i], poses[j], plan.L)
+    if ρ_sq ≥ r_c_sq
+        z = SVector{3, T}(zero(T), zero(T), zero(T))
+        return z, z
+    end
+    element = GreensElement(plan.γ_1, plan.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), plan.L[3], plan.α, plan.accuracy)
+    return QuasiEwald_Fs_pair(charges[i], charges[j], plan.ϵ_0, element, coord_1, coord_2, plan.gauss_para)
+end
+
+"""
+    QuasiEwald.force!(F, plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing) -> F
+    QuasiEwald.force(plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing) -> Vector{SVector{3,T}}
+
+Short-range (real-space) force from plain array-of-structs positions and
+charges, written into `F` (filled, not accumulated into). Neither `poses`
+nor `charges` is mutated. See [`QuasiEwald.energy`](@ref) for the
+`neighbor_list` contract (candidate pairs only, distance always recomputed
+here) and for why no `neighbor_list` means an O(n_atoms^2) direct pair loop.
+"""
+function force!(F, plan::QuasiEwaldShortPlan{T}, poses, charges; neighbor_list = nothing) where {T}
+    n_atoms = plan.n_atoms
+    r_c_sq = plan.r_c^2
+    fill!(F, SVector{3, T}(zero(T), zero(T), zero(T)))
+
+    if neighbor_list === nothing
+        for i in 1:n_atoms, j in (i + 1):n_atoms
+            force_i, force_j = _short_pair_force(plan, poses, charges, i, j, r_c_sq)
+            F[i] += force_i
+            F[j] += force_j
+        end
+    else
+        for pair in neighbor_list
+            i, j = pair[1], pair[2]
+            force_i, force_j = _short_pair_force(plan, poses, charges, i, j, r_c_sq)
+            F[i] += force_i
+            F[j] += force_j
+        end
+    end
+
+    for i in 1:n_atoms
+        element = GreensElement(plan.γ_1, plan.γ_2, poses[i][3], plan.L[3], plan.α, plan.accuracy)
+        F[i] += QuasiEwald_Fs_self(charges[i], plan.ϵ_0, element, plan.gauss_para)
+    end
+
+    return F
+end
+
+"Allocating form of [`QuasiEwald.force!`](@ref)."
+function force(plan::QuasiEwaldShortPlan{T}, poses, charges; kwargs...) where {T}
+    F = [SVector{3, T}(zero(T), zero(T), zero(T)) for _ in 1:plan.n_atoms]
+    return force!(F, plan, poses, charges; kwargs...)
+end

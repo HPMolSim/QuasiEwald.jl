@@ -9,21 +9,26 @@ function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborf
         interaction.coords[i] = SVector{3, T}(p[1], p[2], p[3])
     end
 
-     erase_vector_of_point!(interaction.acceleration)
+    # interaction.acceleration is force scratch here (mass division happens below,
+    # once, after accumulation -- force_long_total!/force_long_sampling! no longer
+    # take a mass argument; see the plan-based force!/force core queries at the
+    # bottom of this file for the framework-free version of the same split).
+    erase_vector_of_point!(interaction.acceleration)
 
     if interaction.rbe == true
         if interaction.k_0 > 0
-            force_long_sampling!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
+            force_long_sampling!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
         else
-            force_long_sampling!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
+            force_long_sampling!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
         end
     else
-        force_long_total!(interaction.q, interaction.mass, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
+        force_long_total!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
     end
 
     for i in 1:length(interaction.acceleration)
-        a = interaction.acceleration[i]
-        info.particle_info[i].acceleration += Point(a[1], a[2], a[3])
+        f = interaction.acceleration[i]
+        m = interaction.mass[i]
+        info.particle_info[i].acceleration += Point(f[1] / m, f[2] / m, f[3] / m)
     end
 
     return nothing
@@ -37,12 +42,12 @@ function force_long_k!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, co
     return nothing
 end
 
-function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
+function force_long_total!(q::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
 
     L_x, L_y, L_z = L
 
-    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    acceleration .+= force_k_sum_0(q, z_list) ./ (2 * L_x * L_y * ϵ_0)
 
     n_x_max = TI(round(k_c * L_x / T(2) * π, RoundUp))
     n_y_max = TI(round(k_c * L_y / T(2) * π, RoundUp))
@@ -62,7 +67,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, 
                 erase_vector_of_point!(sum_temp)
                 force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-                acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+                acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β))
             end
         end
     end
@@ -70,14 +75,14 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, 
     return nothing
 end
 
-function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function force_long_total!(q::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
     @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
     k_0 = log(γ_1 * γ_2) / (2 * L_z)
 
-    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    acceleration .+= force_k_sum_0(q, z_list) ./ (2 * L_x * L_y * ϵ_0)
 
     n_x_max = TI(round(k_c * L_x / T(2) * π, RoundUp))
     n_y_max = TI(round(k_c * L_y / T(2) * π, RoundUp))
@@ -110,7 +115,7 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, 
                 sum_temp .-= sum_temp_k0
 
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-                acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+                acceleration .+= sum_temp .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β))
             end
         end
     end
@@ -123,18 +128,18 @@ function force_long_total!(q::Vector{T}, mass::Vector{T}, coords, acceleration, 
         erase_vector_of_point!(sum_temp_k0)
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
 
-        acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
+        acceleration .+= sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0))
     end
 
     return nothing
 end
 
-function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
+function force_long_sampling!(q::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
 
     L_x, L_y, L_z = L
 
-    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    acceleration .+= force_k_sum_0(q, z_list) ./ (2 * L_x * L_y * ϵ_0)
 
     element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
@@ -146,19 +151,19 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords, acceleratio
         sum_temp = [SVector{3, T}(zero(T), zero(T), zero(T)) for _=1:n_atoms]
         force_long_k!(k_set, q, z_list, container, sum_temp, element, coords)
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β))
     end
 
     return nothing
 end
 
-function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function force_long_sampling!(q::Vector{T}, coords, acceleration, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
 
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
     k_0 = log(γ_1 * γ_2) / (2 * L_z)
 
-    acceleration .+= force_k_sum_0(q, z_list) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    acceleration .+= force_k_sum_0(q, z_list) ./ (2 * L_x * L_y * ϵ_0)
 
     element = GreensElement(γ_1, γ_2, L_z, one(T))
     container = Container{T}(n_atoms)
@@ -182,7 +187,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords, acceleratio
         sum_temp .-= sum_temp_k0
 
         β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+        sum_temp .* (S / rbe_p / (2 * L_x * L_y * ϵ_0 * β))
     end
 
     # the divergent part
@@ -192,7 +197,7 @@ function force_long_sampling!(q::Vector{T}, mass::Vector{T}, coords, acceleratio
         update_container!(container_k0, kn0_set, n_atoms, L_z, coords)
         sum_temp_k0 = [SVector{3, T}(zero(T), zero(T), zero(T)) for _=1:n_atoms]
         force_long_k!(kn0_set, q, z_list, container_k0, sum_temp_k0, element, coords)
-        sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0)) ./ mass
+        sum_temp_k0 .* (ringangles.sectors_sum[sector_id] / (2 * L_x * L_y * ϵ_0))
     end
 
     return nothing
@@ -452,14 +457,14 @@ function force_direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords, L_z::T, �
     return sum_direct
 end
 
-function force_direct_sum_total(q::Vector{T}, mass::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number}
+function force_direct_sum_total(q::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number}
     n_atoms = size(coords)[1]
 
     acceleration = [SVector{3, T}(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
 
     L_x, L_y, L_z = L
 
-    acceleration .+= force_direct_sum_k0(q, coords) ./ mass ./ (2 * L_x * L_y * ϵ_0)
+    acceleration .+= force_direct_sum_k0(q, coords) ./ (2 * L_x * L_y * ϵ_0)
 
     n_x_max = Int(round(k_c * L_x / T(2) * π, RoundUp))
     n_y_max = Int(round(k_c * L_y / T(2) * π, RoundUp))
@@ -473,10 +478,53 @@ function force_direct_sum_total(q::Vector{T}, mass::Vector{T}, coords, L::NTuple
             if k < k_c && k != 0
                 sum_k = force_direct_sum_k(k_set, q, coords, L_z, γ_1, γ_2)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-                acceleration .+= sum_k .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β)) ./ mass
+                acceleration .+= sum_k .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β))
             end
         end
     end
 
     return acceleration
+end
+
+# ============================================================================
+# Framework-free core queries (Task 3). See the QuasiEwaldLongPlan docstring
+# in src/types.jl for why mass/coords/acceleration do not appear here: a
+# framework-free solver returns a force, and mass-division is the caller's
+# job (the extension's `update_acceleration!`, once it exists).
+# ============================================================================
+
+"""
+    QuasiEwald.force!(F, plan::QuasiEwaldLongPlan, poses, charges; z_list = nothing) -> F
+
+Long-range (reciprocal-space) force from plain array-of-structs positions
+and charges, written into `F` (filled, not accumulated into -- matching
+ExTinyMD's own `coulomb_force!` convention). Neither `poses` nor `charges`
+is mutated. Pass `z_list` to reuse an existing z-sort (see
+[`QuasiEwald.energy`](@ref) for the same option).
+
+Dispatches exactly as the old ExTinyMD adapter (`QuasiEwald_Fl!`) did:
+`plan.rbe == false` always calls the non-ringangles `force_long_total!`,
+even when `plan.k_0 > 0` (the "divergent" `γ_1*γ_2 ≥ 1` case) -- only the
+`rbe == true` branch checks `k_0`. That asymmetry predates this phase and is
+preserved rather than corrected.
+"""
+function force!(F, plan::QuasiEwaldLongPlan{T}, poses, charges; z_list = nothing) where {T}
+    zl = z_list === nothing ? sortperm([p[3] for p in poses]) : z_list
+    fill!(F, SVector{3, T}(zero(T), zero(T), zero(T)))
+    if plan.rbe
+        if plan.k_0 > 0
+            force_long_sampling!(charges, poses, F, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.rbe_p, plan.sum_k, plan.K_set, plan.ringangles)
+        else
+            force_long_sampling!(charges, poses, F, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.rbe_p, plan.sum_k, plan.K_set)
+        end
+    else
+        force_long_total!(charges, poses, F, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.α, plan.k_c)
+    end
+    return F
+end
+
+"Allocating form of [`QuasiEwald.force!`](@ref)."
+function force(plan::QuasiEwaldLongPlan{T}, poses, charges; kwargs...) where {T}
+    F = [SVector{3, T}(zero(T), zero(T), zero(T)) for _ in 1:plan.n_atoms]
+    return force!(F, plan, poses, charges; kwargs...)
 end

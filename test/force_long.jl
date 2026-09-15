@@ -56,10 +56,15 @@
             end
         end
         
+        # force_long_total!/force_direct_sum_total no longer take a `mass`
+        # argument (Task 3: mass-division moved out of the framework-free
+        # core -- see the plan-based force!/force queries at the bottom of
+        # src/force/force_long.jl). This test's `mass` is uniformly 1.0
+        # anyway, so nothing here changes numerically.
         a_sort = [SVector(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
-        force_long_total!(q, mass, coords, a_sort, z_list, L, γ_1, γ_2, ϵ_0, α, k_c)
+        force_long_total!(q, coords, a_sort, z_list, L, γ_1, γ_2, ϵ_0, α, k_c)
 
-        a_dir = force_direct_sum_total(q, mass, coords, L, γ_1, γ_2, ϵ_0, α, k_c)
+        a_dir = force_direct_sum_total(q, coords, L, γ_1, γ_2, ϵ_0, α, k_c)
 
         @testset "compare sum_total" begin
             for i in 1:n_atoms

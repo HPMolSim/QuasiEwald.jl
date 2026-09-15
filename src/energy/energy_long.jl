@@ -454,3 +454,35 @@ function direct_sum_k_0(q::Vector{T}, coords) where{T}
 
     return sum_k0
 end
+# ============================================================================
+# Framework-free core query (Task 3). See the QuasiEwaldLongPlan docstring in
+# src/types.jl for why mass/coords/acceleration do not appear here.
+# ============================================================================
+
+"""
+    QuasiEwald.energy(plan::QuasiEwaldLongPlan, poses, charges; z_list = nothing) -> T
+
+Long-range (reciprocal-space) energy from plain array-of-structs positions
+and charges -- no ExTinyMD type constructed, neither argument mutated. Pass
+`z_list` (e.g. `sorter.z_list` from a [`ZSorter`](@ref) kept by the caller)
+to reuse an existing z-sort; otherwise one is computed fresh with
+`sortperm`.
+
+Dispatches exactly as the old ExTinyMD adapter (`QuasiEwald_El`) did: only
+`plan.rbe` selects sampling vs. direct summation over k-vectors. The
+ring-angle ("divergent", `γ_1*γ_2 ≥ 1`) correction is therefore reached only
+through the `rbe = true` path with `plan.k_0 > 0`'s sibling in force!, never
+here -- `QuasiEwald_El` never called the ringangles-taking `energy_sum_total`
+overload either, even when `plan.k_0 > 0`. That asymmetry between the energy
+and force paths predates this phase; it is preserved rather than "fixed" per
+the phase's own rule that a moved number is a finding, not a bug to
+silently correct.
+"""
+function energy(plan::QuasiEwaldLongPlan{T}, poses, charges; z_list = nothing) where {T}
+    zl = z_list === nothing ? sortperm([p[3] for p in poses]) : z_list
+    if plan.rbe
+        return energy_sum_sampling(charges, poses, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.rbe_p, plan.sum_k, plan.K_set)
+    else
+        return energy_sum_total(charges, poses, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.α, plan.k_c)
+    end
+end

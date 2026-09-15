@@ -1,10 +1,27 @@
 module QuasiEwald
 
 # these are packages to be used in this package
-using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, ExTinyMD, Distributions, Random, StaticArrays, StatsBase, Distributed
+using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, Distributions, Random, StaticArrays, StatsBase, Distributed
+# ExTinyMD is imported narrowly (not a blanket `using`) so that this module's
+# OWN `energy`/`force`/`force!` (the framework-free plan API, Task 3 of the
+# decoupling phase) are genuinely new generic functions, not extensions of
+# ExTinyMD's same-named `energy`. `using ExTinyMD` would bring `energy` into
+# this module's unqualified scope bound to ExTinyMD's function, and Julia
+# then requires (and this module does not want) every subsequent
+# `function energy(...)` here to be a method of *that* function via
+# `function ExTinyMD.energy(...)`. The names below are exactly the ones this
+# module's still-ExTinyMD-coupled adapter code (to be moved to
+# `ext/QuasiEwaldExTinyMDExt.jl` in the next task) uses unqualified; every
+# use of `energy`/`update_acceleration!` on the ExTinyMD side is already
+# spelled out fully as `ExTinyMD.energy`/`ExTinyMD.update_acceleration!`.
+import ExTinyMD
+using ExTinyMD: SimulationInfo, MDSys, CellListQ2D, update_finder!, Point
 
 export IcmSys, GaussParameter, GreensElement, QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, SortingFinder
 export RBE_α, QuasiEwaldRbeInit
+# Framework-free plans (Task 3 of the decoupling phase). `energy`/`force`/
+# `force!` themselves are deliberately NOT exported -- see their docstrings.
+export QuasiEwaldShortPlan, QuasiEwaldLongPlan, ZSorter, update_sorter!
 export Gamma_1, Gamma_2, dz_Gamma_1, dz_Gamma_2, dz_Gamma_self_1, dz_Gamma_self_2
 export IcmSysInit, IcmEnergy, IcmForce
 export Gauss_int, Gauss_int_Tuple

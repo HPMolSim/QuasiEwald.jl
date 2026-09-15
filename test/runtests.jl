@@ -3,6 +3,7 @@ using Test
 using ExTinyMD
 using SpecialFunctions
 using StaticArrays
+using Random
 
 @testset "QuasiEwald.jl" begin
     include("Icm.jl")
@@ -12,4 +13,5 @@ using StaticArrays
     include("force_long.jl")
     include("energy_long.jl")
     include("simulate.jl")
+    include("plan.jl")
 end
