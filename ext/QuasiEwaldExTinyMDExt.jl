@@ -55,11 +55,34 @@ function gather_charges!(buf::Vector{T}, sys::ExTinyMD.MDSys{T}, info::ExTinyMD.
     return buf
 end
 
-# A NoNeighborFinder carries no usable list, so the short-range plan falls
-# back to its own O(n^2) pair loop in that case (see QuasiEwald.energy's
-# docstring for QuasiEwaldShortPlan).
+# Which finders the short-range wrapper accepts, and why the fallback throws.
+#
+# The quasi-2D short-range sum needs candidate pairs selected by *in-plane*
+# distance. `CellListQ2D` and `CellListDirQ2D` do exactly that. A
+# NoNeighborFinder carries no usable list at all, so the plan falls back to
+# its own O(n^2) pair loop (see QuasiEwald.energy's docstring for
+# QuasiEwaldShortPlan), which is always correct, just slower.
+#
+# Everything else must be a hard error, NOT a silent `f.neighbor_list`.
+# `CellList3D`/`CellListDir3D` have a `neighbor_list` field of the right
+# shape, so an untyped fallback accepts them happily -- and then omits every
+# pair whose in-plane distance is under `r_c` but whose 3-D distance exceeds
+# the finder's cutoff, i.e. exactly the tall, near-columnar pairs a confined
+# slab is full of. The energy and force come back quietly too small. Before
+# this package was decoupled, `QuasiEwald_Es`/`QuasiEwald_Fs!` were annotated
+# `::CellListQ2D{T,TI}` and a 3-D finder was a `MethodError`; this restores
+# that loud failure with a message that says what to use instead.
 _finder_list(::ExTinyMD.NoNeighborFinder) = nothing
-_finder_list(f) = f.neighbor_list
+_finder_list(f::Union{ExTinyMD.CellListQ2D, ExTinyMD.CellListDirQ2D}) = f.neighbor_list
+_finder_list(f) = throw(ArgumentError(
+    "QuasiEwald's short-range interaction needs a quasi-2D neighbour finder, " *
+    "but got a $(typeof(f)). Use ExTinyMD.CellListQ2D or ExTinyMD.CellListDirQ2D " *
+    "(pairs selected by in-plane distance), or ExTinyMD.NoNeighborFinder to fall " *
+    "back to the plan's own O(n^2) pair loop. A 3-D finder (CellList3D, " *
+    "CellListDir3D) is refused deliberately and not merely unimplemented: its " *
+    "list is built from 3-D distances, so it drops pairs that are close in " *
+    "plane but far apart in z, and the quasi-2D short-range sum would come " *
+    "back silently too small rather than failing."))
 
 # ----------------------------------------------------------------------------
 # Short-range wrapper
