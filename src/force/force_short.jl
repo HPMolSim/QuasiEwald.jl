@@ -130,50 +130,8 @@ function Fsz_self_point_core( element::GreensElement{T}) where {T<:Number}
     return f_sz_p
 end
 
-function QuasiEwald_Fs!(interaction::QuasiEwaldShortInteraction{T, TI}, neighborfinder::CellListQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
 
-    atoms = sys.atoms
-    n_atoms = length(atoms)
-    psize = div(n_atoms, nprocs())
-    
-    accelerations = @distributed (+) for pid in 1:nprocs()
-        sum_temp = [Point(zero(T), zero(T), zero(T)) for _=1:n_atoms]
-        for k in (pid-1)*psize+1:min(pid*psize, n_atoms)
-            i, j, ρ0 = neighborfinder.neighbor_list[k]
-            id_i = info.particle_info[i].id
-            id_j = info.particle_info[j].id
-            coord_1, coord_2, ρ_sq = position_checkQ2D(info.particle_info[i].position, info.particle_info[j].position, sys.boundary, interaction.r_c)
-            if iszero(ρ_sq)
-                nothing
-            else
-                element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
-                q_1 = atoms[id_i].charge
-                q_2 = atoms[id_j].charge
-                force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para)
-                sum_temp[i] += force_i / atoms[id_i].mass
-                sum_temp[j] += force_j / atoms[id_j].mass
-            end
-        end
-        sum_temp
-    end
-
-    for i in 1:n_atoms
-        info.particle_info[i].acceleration += accelerations[i]
-    end
-
-    for p_info in info.particle_info
-        id_i = p_info.id
-        element = GreensElement(interaction.γ_1, interaction.γ_2, p_info.position[3], interaction.L[3], interaction.α, interaction.accuracy)
-        q = atoms[p_info.id].charge
-        force_i = QuasiEwald_Fs_self(q, interaction.ϵ_0, element, interaction.gauss_para)
-
-        p_info.acceleration += force_i / atoms[id_i].mass
-    end
-    
-    return nothing
-end
-
-function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, coord_1::Point{3, T}, coord_2::Point{3, T}, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number
+function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, coord_1, coord_2, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number
     k_f1 = maximum(element.k_f1)
     k_f2 = maximum(element.k_f2)
     ρ = element.ρ
@@ -188,8 +146,30 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     end
 
     Fsr = - Fsr_point_1 + Fsr_point_2 + Fsr_gauss
-    Fsx = Fsr * (coord_1[1] - coord_2[1]) / ρ
-    Fsy = Fsr * (coord_1[2] - coord_2[2]) / ρ
+    # `Fsr` is the RADIAL magnitude; the in-plane components need the unit
+    # vector (dx, dy)/ρ. At ρ == 0 that is 0/0: `Fsr` itself vanishes there
+    # (every term carries either `besselj1(k*ρ)` or an explicit factor of ρ),
+    # so the quotient is NaN, not a genuine singularity. The limit is zero and
+    # approached linearly -- measured Fx = 1.088e-5, 1.088e-7, 1.088e-10,
+    # 1.088e-13 at dx = 1e-1, 1e-3, 1e-6, 1e-9 -- which is also what symmetry
+    # demands, since dx and dy are identically zero. Fsz is finite and
+    # continuous through ρ = 0 and is left alone.
+    #
+    # ρ == 0 is reachable and not exotic: any two particles sharing an (x, y)
+    # column, and any pair whose in-plane separation is an exact multiple of
+    # Lx or Ly (so the minimum image wraps to zero) -- i.e. any lattice or
+    # grid initialisation. Before this package was decoupled, ExTinyMD's
+    # `position_checkQ2D` returned its all-zero sentinel for such a pair and
+    # every caller's `iszero(ρ_sq)` guard skipped it, which masked this by
+    # dropping the pair's real z-force too. The explicit `ρ_sq ≥ r_c^2` test
+    # that replaced the sentinel keeps the pair, so the guard has to be here.
+    if iszero(ρ)
+        Fsx = zero(T)
+        Fsy = zero(T)
+    else
+        Fsx = Fsr * (coord_1[1] - coord_2[1]) / ρ
+        Fsy = Fsr * (coord_1[2] - coord_2[2]) / ρ
+    end
     
     # about the force in z direction
     Fsz_point_1 = Gauss_int_Tuple(Fsz_point_core, gauss_para, element, region = (zero(T), k_f2)) .+ Fsz_point_core(element)
@@ -211,7 +191,7 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     end
     Fsz = Fsz_point_1 .- Fsz_point_2 .- Fsz_gauss
 
-    return (q_1 * q_2 / (2 * π * ϵ_0)) .* (Point(Fsx, Fsy, Fsz[1]), Point(-Fsx, -Fsy, Fsz[2]))
+    return (q_1 * q_2 / (2 * π * ϵ_0)) .* (SVector{3, T}(Fsx, Fsy, Fsz[1]), SVector{3, T}(-Fsx, -Fsy, Fsz[2]))
 
 end
 
@@ -230,7 +210,68 @@ function QuasiEwald_Fs_self(q::T, ϵ_0::T, element::GreensElement{T}, gauss_para
         Fsz_gauss = zero(T)
     end
 
-    Fsz = q^2 * Point(zero(T), zero(T), + Fsz_point_1 - Fsz_point_2 - Fsz_gauss) / (2 * π * ϵ_0)
+    Fsz = q^2 * SVector{3, T}(zero(T), zero(T), + Fsz_point_1 - Fsz_point_2 - Fsz_gauss) / (2 * π * ϵ_0)
     
     return Fsz
+end
+# ============================================================================
+# Framework-free core queries (Task 3).
+# ============================================================================
+
+"Candidate-pair force contribution on `i` and `j`; both zero unless within `r_c_sq` after the true minimum-image correction."
+@inline function _short_pair_force(plan::QuasiEwaldShortPlan{T}, poses, charges, i, j, r_c_sq::T, single_mode::Bool = false) where {T}
+    coord_1, coord_2, ρ_sq = _min_image_q2d(poses[i], poses[j], plan.L)
+    if ρ_sq ≥ r_c_sq
+        z = SVector{3, T}(zero(T), zero(T), zero(T))
+        return z, z
+    end
+    element = GreensElement(plan.γ_1, plan.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), plan.L[3], plan.α, plan.accuracy)
+    return QuasiEwald_Fs_pair(charges[i], charges[j], plan.ϵ_0, element, coord_1, coord_2, plan.gauss_para; single_mode = single_mode)
+end
+
+"""
+    QuasiEwald.force!(F, plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing, single_mode = false) -> F
+    QuasiEwald.force(plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing, single_mode = false) -> Vector{SVector{3,T}}
+
+Short-range (real-space) force from plain array-of-structs positions and
+charges, written into `F` (filled, not accumulated into). Neither `poses`
+nor `charges` is mutated. See [`QuasiEwald.energy`](@ref) for the
+`neighbor_list` contract (candidate pairs only, distance always recomputed
+here), for why no `neighbor_list` means an O(n_atoms^2) direct pair loop,
+and for what `single_mode` does -- it is forwarded verbatim to
+[`QuasiEwald_Fs_pair`](@ref)/[`QuasiEwald_Fs_self`](@ref), exactly as
+`single_mode` on `QuasiEwald.energy` is forwarded to the energy kernels.
+"""
+function force!(F, plan::QuasiEwaldShortPlan{T}, poses, charges; neighbor_list = nothing, single_mode::Bool = false) where {T}
+    n_atoms = plan.n_atoms
+    r_c_sq = plan.r_c^2
+    fill!(F, SVector{3, T}(zero(T), zero(T), zero(T)))
+
+    if neighbor_list === nothing
+        for i in 1:n_atoms, j in (i + 1):n_atoms
+            force_i, force_j = _short_pair_force(plan, poses, charges, i, j, r_c_sq, single_mode)
+            F[i] += force_i
+            F[j] += force_j
+        end
+    else
+        for pair in neighbor_list
+            i, j = pair[1], pair[2]
+            force_i, force_j = _short_pair_force(plan, poses, charges, i, j, r_c_sq, single_mode)
+            F[i] += force_i
+            F[j] += force_j
+        end
+    end
+
+    for i in 1:n_atoms
+        element = GreensElement(plan.γ_1, plan.γ_2, poses[i][3], plan.L[3], plan.α, plan.accuracy)
+        F[i] += QuasiEwald_Fs_self(charges[i], plan.ϵ_0, element, plan.gauss_para; single_mode = single_mode)
+    end
+
+    return F
+end
+
+"Allocating form of [`QuasiEwald.force!`](@ref)."
+function force(plan::QuasiEwaldShortPlan{T}, poses, charges; kwargs...) where {T}
+    F = [SVector{3, T}(zero(T), zero(T), zero(T)) for _ in 1:plan.n_atoms]
+    return force!(F, plan, poses, charges; kwargs...)
 end

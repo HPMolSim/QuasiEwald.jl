@@ -1,3 +1,30 @@
+# Nearest-image displacement, `dx - L*round(dx/L)`. This package used to rely on
+# ExTinyMD's `position_checkQ2D`, which scans `m ∈ -1:1` and returns the *first*
+# periodic image inside the cutoff (or a sentinel all-zero triple if none is
+# found, forcing every caller to guard with `iszero`) -- correct only while
+# `r_c < L/2`. `_wrap`/`_min_image_q2d` are the true minimum image for any cutoff,
+# and callers test the returned `ρ_sq` explicitly instead of a sentinel.
+@inline _wrap(dx::T, L::T) where {T} = dx - L * round(dx / L)
+
+"""
+    _min_image_q2d(pos_i, pos_j, L) -> (coord_i, coord_j, ρ_sq)
+
+Quasi-2D nearest-image helper: x and y wrap under `L`, z is left as a plain
+difference (it is not periodic in this geometry). Returns `pos_i` shifted to
+its nearest in-plane image of `pos_j`, `pos_j` unchanged, and their squared
+in-plane distance `ρ_sq`. `pos_i`/`pos_j` need only support `p[1]`, `p[2]`,
+`p[3]` indexing (an `SVector{3,T}`, `NTuple{3,T}` or ExTinyMD's `Point{3,T}`
+all qualify).
+"""
+@inline function _min_image_q2d(pos_i, pos_j, L::NTuple{3, T}) where {T}
+    dx = _wrap(T(pos_i[1]) - T(pos_j[1]), L[1])
+    dy = _wrap(T(pos_i[2]) - T(pos_j[2]), L[2])
+    ρ_sq = dx^2 + dy^2
+    coord_i = SVector{3, T}(T(pos_j[1]) + dx, T(pos_j[2]) + dy, T(pos_i[3]))
+    coord_j = SVector{3, T}(T(pos_j[1]), T(pos_j[2]), T(pos_j[3]))
+    return coord_i, coord_j, ρ_sq
+end
+
 struct IcmSys{T, R}
     γ::NTuple{2, T} # (γ_up, γ_down)
     L::NTuple{3, T} # (Lx, Ly, Lz)
@@ -139,8 +166,46 @@ function nearest_angle_indice(k_x::T, k_y::T, ring_angles::Vector{T}) where{T}
     return id
 end
 
-struct QuasiEwaldShortInteraction{T, TI} <: ExTinyMD.AbstractInteraction
-    # common used part
+# ============================================================================
+# Framework-free plans.
+#
+# `QuasiEwaldShortInteraction`/`QuasiEwaldLongInteraction`/`SortingFinder`
+# (the dispatcher stubs declared in QuasiEwald.jl) used to be defined here as
+# structs wearing an `ExTinyMD.AbstractInteraction`/`AbstractNeighborFinder`
+# supertype directly. That supertype is fixed at struct definition and
+# cannot be retrofitted by an extension (see the phase spec's §4.3a), which
+# is fundamentally incompatible with this module having no ExTinyMD
+# dependency at all -- so those struct definitions, and everything MDSys/
+# SimulationInfo-shaped that went with them, now live in
+# `ext/QuasiEwaldExTinyMDExt.jl`, defined only once ExTinyMD is loaded.
+#
+# `QuasiEwaldShortPlan`/`QuasiEwaldLongPlan`/`ZSorter` below are the
+# framework-free replacement: the same physics, no ExTinyMD anywhere,
+# constructed and queried from plain arrays via `QuasiEwald.energy`/`force`/
+# `force!` (defined alongside the rest of the energy/force machinery in
+# energy/energy_short.jl, energy/energy_long.jl, force/force_short.jl,
+# force/force_long.jl). `mass`/`acceleration` do not appear on the long
+# plan: a framework-free solver returns forces and leaves mass-division to
+# the caller, exactly as ExTinyMD's own electrostatics adapter does
+# (../ExTinyMD.jl/src/interactions/electrostatics/adapter.jl) -- the
+# extension's `update_acceleration!` does that division.
+# ============================================================================
+
+"""
+    QuasiEwaldShortPlan(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t)
+
+Framework-free short-range (real-space) plan for the quasi-2D Ewald method.
+Pure parameters -- no ExTinyMD dependency, nothing MD-specific. Query with
+[`QuasiEwald.energy`](@ref), [`QuasiEwald.force`](@ref) or
+[`QuasiEwald.force!`](@ref) against plain array-of-structs positions
+(`Vector{SVector{3,T}}` canonical, but anything supporting `p[1]`/`p[2]`/
+`p[3]` indexing works) and a plain charge vector.
+
+`r_c` must satisfy `r_c < min(Lx, Ly) / 2`; anything else throws an
+`ArgumentError` (the short-range sum uses the single nearest in-plane
+periodic image, which is only correct below half the box).
+"""
+struct QuasiEwaldShortPlan{T, TI}
     γ_1::T
     γ_2::T
     ϵ_0::T
@@ -150,16 +215,45 @@ struct QuasiEwaldShortInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     α::T
     n_atoms::TI
 
-    # short range part
     r_c::T
     n_t::TI
     gauss_para::GaussParameter{T}
 end
 
-QuasiEwaldShortInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, r_c::T, n_t::TI) where {T<:Number, TI<:Integer} = QuasiEwaldShortInteraction(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t, GaussParameter(n_t))
+function QuasiEwaldShortPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, r_c::T, n_t::TI) where {T<:Number, TI<:Integer}
+    # `_min_image_q2d` returns the single nearest in-plane image, which is the
+    # only image inside the cutoff exactly when `r_c < min(Lx, Ly) / 2`. At or
+    # beyond half the box a second image is also within `r_c` and the
+    # short-range sum silently multiply-counts it: no exception, no warning,
+    # just a wrong number. This is the only place that can catch it for a
+    # standalone (no-ExTinyMD, no-CellListMap) caller, since nothing else in
+    # this package ever looks at the unit cell.
+    if !(r_c < min(L[1], L[2]) / 2)
+        throw(ArgumentError(
+            "QuasiEwaldShortPlan requires r_c < min(Lx, Ly) / 2, but got " *
+            "r_c = $r_c with (Lx, Ly) = ($(L[1]), $(L[2])), i.e. " *
+            "min(Lx, Ly) / 2 = $(min(L[1], L[2]) / 2). The quasi-2D " *
+            "short-range sum uses the single nearest in-plane periodic image, " *
+            "which is only the whole story below half the box; at or above it " *
+            "the sum multiply-counts images and the result is silently wrong. " *
+            "Reduce r_c, or enlarge Lx/Ly."))
+    end
+    return QuasiEwaldShortPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t, GaussParameter(n_t))
+end
 
-struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
-    # common used part
+"""
+    QuasiEwaldLongPlan(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p; Δk = ...)
+
+Framework-free long-range (reciprocal-space) plan for the quasi-2D Ewald
+method. Same parameters as the old `QuasiEwaldLongInteraction`, minus
+`mass`/`coords`/`acceleration`: [`QuasiEwald.force!`](@ref) returns a force,
+not an acceleration, so this plan carries no notion of mass at all. Query
+with [`QuasiEwald.energy`](@ref)/[`QuasiEwald.force`](@ref)/
+[`QuasiEwald.force!`](@ref); pass `z_list =` to reuse a z-sort already
+computed (e.g. by [`ZSorter`](@ref)), or omit it to have the query compute
+its own via `sortperm`.
+"""
+struct QuasiEwaldLongPlan{T, TI}
     γ_1::T
     γ_2::T
     ϵ_0::T
@@ -169,26 +263,18 @@ struct QuasiEwaldLongInteraction{T, TI} <: ExTinyMD.AbstractInteraction
     α::T
     n_atoms::TI
 
-    # long range part
     k_c::T
     rbe_p::TI
     sum_k::T
     K_set::Vector{NTuple{3, T}}
 
-    # divergent part
     k_0::T
     ringangles::RingAngles{T}
-
-    # charge and coords
-    q::Vector{T}
-    mass::Vector{T}
-    coords::Vector{Point{3, T}}
-    acceleration::Vector{Point{3, T}}
 end
 
-function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where{T<:Number, TI<:Integer}
+function QuasiEwaldLongPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, k_c::T, rbe_p::TI; Δk::T = π / sqrt(L[1] * L[2])) where {T<:Number, TI<:Integer}
     K_set, sum_k = rbe_sampling(L, α, accuracy)
-    
+
     if γ_1 * γ_2 ≥ one(T)
         k_0 = log(γ_1 * γ_2) / (2 * L[3])
         ringangles = RingAngles(k_0, L[1], L[2], L[3], α, k_c, Δk)
@@ -197,30 +283,43 @@ function QuasiEwaldLongInteraction(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, r
         ringangles = RingAngles(k_0)
     end
 
-    q = zeros(T, n_atoms)
-    mass = zeros(T, n_atoms)
-    coords = Vector{Point{3, T}}(undef, n_atoms)
-    acceleration = Vector{Point{3, T}}(undef, n_atoms)
-
-    return QuasiEwaldLongInteraction{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles, q, mass, coords, acceleration)
+    return QuasiEwaldLongPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p, sum_k, K_set, k_0, ringangles)
 end
 
-mutable struct SortingFinder{T, TI} <: ExTinyMD.AbstractNeighborFinder
+"""
+    ZSorter(poses) -> ZSorter
+    ZSorter(z_coords::Vector{T}) -> ZSorter
+
+Plan-side z-sorter: the framework-free half of the old `SortingFinder`
+(itself an `ExTinyMD.AbstractNeighborFinder`, which cannot live in `src/`).
+Holds the z-coordinates and their sort permutation, refreshed in place by
+[`update_sorter!`](@ref) so repeated queries in an MD-style loop do not
+reallocate. [`QuasiEwald.energy`](@ref)/[`force`](@ref)/[`force!`](@ref) on
+[`QuasiEwaldLongPlan`](@ref) accept `z_list = sorter.z_list` (or compute
+their own z-sort when no `z_list` is given at all).
+"""
+mutable struct ZSorter{T, TI}
     z_coords::Vector{T}
     z_list::Vector{TI}
 end
 
-function SortingFinder(info::SimulationInfo{T}) where {T<: Number}
-    z_coords = [p_info.position[3] for p_info in info.particle_info]
-    z_list = sortperm(z_coords)
-    return SortingFinder{T, eltype(z_list)}(z_coords, z_list)
+function ZSorter(poses)
+    z_coords = [p[3] for p in poses]
+    return ZSorter(z_coords, sortperm(z_coords))
 end
 
-function ExTinyMD.update_finder!(neighborfinder::T_NIEGHBOR, info::SimulationInfo{T}) where {T<:Number, T_NIEGHBOR <: SortingFinder}
-    n_atoms = length(neighborfinder.z_list)
-    for i in 1:n_atoms
-        neighborfinder.z_coords[i] = info.particle_info[i].position[3]
+# The z-coordinates-only entry point the docstring above advertises. It used
+# to be documented but not defined, so the call landed on `ZSorter(poses)`
+# and raised `BoundsError: attempt to access Float64 at index [3]`. `copy` is
+# not optional: `update_sorter!` writes into `sorter.z_coords` in place, so
+# the sorter has to own its array rather than alias the caller's.
+ZSorter(z_coords::Vector{T}) where {T<:Number} = ZSorter(copy(z_coords), sortperm(z_coords))
+
+"Refresh `sorter` in place from the z-component of `poses` (no reallocation)."
+function update_sorter!(sorter::ZSorter, poses)
+    for i in eachindex(sorter.z_coords)
+        sorter.z_coords[i] = poses[i][3]
     end
-    sortperm!(neighborfinder.z_list, neighborfinder.z_coords)
-    return nothing
+    sortperm!(sorter.z_list, sorter.z_coords)
+    return sorter
 end

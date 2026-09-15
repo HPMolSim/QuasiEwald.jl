@@ -45,7 +45,7 @@
 
             accuracy = 1e-4
             α = 10.0
-            r_c = 4.5
+            r_c = 4.5   # r_c = 4.5 < min(Lx,Ly)/2 = 5.0
             k_c = sqrt(-4 * α * log(accuracy))
 
             sortz = SortingFinder(info)
@@ -58,7 +58,11 @@
             ExTinyMD.update_acceleration!(interaction_long, sortz, sys, info)
 
             for i in 1:n_atoms
-                error_i = sqrt(dist2(force_icm[i], info.particle_info[i].acceleration))
+                # dist2 is ExTinyMD's own Point-only squared distance; force_icm[i]
+                # is an SVector{3,T} now that IcmForce no longer depends on ExTinyMD,
+                # so compare componentwise instead.
+                a = info.particle_info[i].acceleration
+                error_i = sqrt(sum(k -> abs2(force_icm[i][k] - a[k]), 1:3))
                 @test error_i < 1e-2
             end
         end

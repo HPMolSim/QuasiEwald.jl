@@ -1,8 +1,8 @@
-function IcmSysInit(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}) where T <: Number
+function IcmSysInit(sys::IcmSys, position, charge::Vector{T}) where T <: Number
     # @assert sum(charge) == 0
     γ_up = sys.γ[1]
     γ_down = sys.γ[2]
-    reflect_position = Vector{Point{3, T}}()
+    reflect_position = Vector{SVector{3, T}}()
     reflect_charge = Vector{T}()
 
     for i = 1:length(charge)
@@ -22,12 +22,12 @@ function IcmSysInit(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T
             push!(charge_up, γ_up * charge_down[m-1])
             push!(charge_down, γ_down * charge_up[m-1])
         end
-        push!(reflect_position, Point(x, y, z))
+        push!(reflect_position, SVector{3, T}(x, y, z))
         push!(reflect_charge, q)
         for m in 1:sys.N_img
-            push!(reflect_position, Point(x, y, position_up[m]))
+            push!(reflect_position, SVector{3, T}(x, y, position_up[m]))
             push!(reflect_charge, charge_up[m])
-            push!(reflect_position, Point(x, y, position_down[m]))
+            push!(reflect_position, SVector{3, T}(x, y, position_down[m]))
             push!(reflect_charge, charge_down[m])
         end
     end
@@ -35,7 +35,7 @@ function IcmSysInit(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T
     return reflect_position, reflect_charge
 end
 
-function IcmEnergy(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
+function IcmEnergy(sys::IcmSys, position, charge::Vector{T}, reflect_position, reflect_charge::Vector{T}) where T<:Number
     energy = zero(T)
     for i in 1:length(charge)
         q_i = charge[i]
@@ -45,7 +45,16 @@ function IcmEnergy(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}
             pos_j = reflect_position[j]
             for mx in -sys.N_real:sys.N_real
                 for my in -sys.N_real:sys.N_real
-                    r = dist2(pos_i, pos_j + Point(mx * sys.L[1], my * sys.L[2], 0.0))
+                    # Squared distance from pos_i to the (mx, my)-periodic image of
+                    # pos_j, computed componentwise so pos_i/pos_j may be any mix of
+                    # Point{3,T}, SVector{3,T} or NTuple{3,T} -- no shared `+`/`-`
+                    # method between them is required (dist2, ExTinyMD's own
+                    # Point-only squared distance, no longer applies once this
+                    # package has no ExTinyMD dependency).
+                    dx = pos_i[1] - (pos_j[1] + mx * sys.L[1])
+                    dy = pos_i[2] - (pos_j[2] + my * sys.L[2])
+                    dz = pos_i[3] - pos_j[3]
+                    r = dx^2 + dy^2 + dz^2
                     if r != 0.0
                         energy += q_i * q_j / (8π * sqrt(r))
                     end
@@ -56,8 +65,8 @@ function IcmEnergy(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}
     return energy
 end
 
-function IcmForce(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
-    force = [Point(zero(T), zero(T), zero(T)) for _=1:length(charge)]
+function IcmForce(sys::IcmSys, position, charge::Vector{T}, reflect_position, reflect_charge::Vector{T}) where T<:Number
+    force = [SVector{3, T}(zero(T), zero(T), zero(T)) for _=1:length(charge)]
     for i in 1:length(charge)
         q_i = charge[i]
         pos_i = position[i]
@@ -66,16 +75,17 @@ function IcmForce(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T},
             pos_j = reflect_position[j]
             for mx in -sys.N_real:sys.N_real
                 for my in -sys.N_real:sys.N_real
-                    force[i] += CoulumbForce(q_i, q_j, pos_i, pos_j + Point(mx * sys.L[1], my * sys.L[2], 0.0))
+                    shifted = (pos_j[1] + mx * sys.L[1], pos_j[2] + my * sys.L[2], pos_j[3])
+                    force[i] += CoulumbForce(q_i, q_j, pos_i, shifted)
                 end
             end
         end
     end
-    return force 
+    return force
 end
 
-function IcmForce_self(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vector{T}, reflect_position::Vector{Point{3, T}}, reflect_charge::Vector{T}) where T<:Number
-    force_self = [Point(zero(T), zero(T), zero(T)) for _=1:length(charge)]
+function IcmForce_self(sys::IcmSys, position, charge::Vector{T}, reflect_position, reflect_charge::Vector{T}) where T<:Number
+    force_self = [SVector{3, T}(zero(T), zero(T), zero(T)) for _=1:length(charge)]
     for i in 1:length(charge)
         q_i = charge[i]
         pos_i = position[i]
@@ -85,23 +95,31 @@ function IcmForce_self(sys::IcmSys, position::Vector{Point{3, T}}, charge::Vecto
             if pos_j[1] ≈ pos_i[1] && pos_j[2] ≈ pos_i[2]
                 for mx in -sys.N_real:sys.N_real
                     for my in -sys.N_real:sys.N_real
-                        force_self[i] += CoulumbForce(q_i, q_j, pos_i, pos_j + Point(mx * sys.L[1], my * sys.L[2], 0.0))
+                        shifted = (pos_j[1] + mx * sys.L[1], pos_j[2] + my * sys.L[2], pos_j[3])
+                        force_self[i] += CoulumbForce(q_i, q_j, pos_i, shifted)
                     end
                 end
             end
         end
     end
-    return force_self 
+    return force_self
 end
 
-function CoulumbForce(q_i::T, q_j::T, coo_i::Point{3, T}, coo_j::Point{3, T}) where T<:Number
-    r = dist2(coo_i, coo_j)
+"Coulomb force on charge `q_i` at `coo_i` from `q_j` at `coo_j`, either of which may be a `Point{3,T}`, `SVector{3,T}` or plain `NTuple{3,T}` (only `[1]`/`[2]`/`[3]` indexing is required); always returns an `SVector{3,T}`."
+function CoulumbForce(q_i::T, q_j::T, coo_i, coo_j) where T<:Number
+    dx = coo_i[1] - coo_j[1]
+    dy = coo_i[2] - coo_j[2]
+    dz = coo_i[3] - coo_j[3]
+    r = dx^2 + dy^2 + dz^2
     if iszero(r) == false
         rho = sqrt(r)
         F = q_i * q_j / (4π * r)
-        angle = (coo_i - coo_j) * (1/rho)
-        return F * angle
+        inv_rho = 1 / rho
+        # Same operation order as the original Point-based implementation
+        # (`angle = (coo_i - coo_j) * (1/rho); F * angle`) so the two are
+        # bit-identical, not merely equal to floating-point tolerance.
+        return F .* SVector{3, T}(dx * inv_rho, dy * inv_rho, dz * inv_rho)
     else
-        return Point(0.0, 0.0, 0.0)
+        return SVector{3, T}(zero(T), zero(T), zero(T))
     end
 end

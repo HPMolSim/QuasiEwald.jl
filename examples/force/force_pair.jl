@@ -43,9 +43,10 @@ begin
             interaction_short = QuasiEwaldShortInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, r_c, n_t)
             interaction_long = QuasiEwaldLongInteraction(γ_1, γ_2, ϵ_0, (L, L, 10.0), false, accuracy, α, n_atoms, k_c, 0)
     
-            force_qem = [Point(0.0, 0.0, 0.0) for i in 1:n_atoms]
-            QuasiEwald_Fs!(interaction_short, cellq2d, sys, info)
-            QuasiEwald_Fl!(interaction_long, sortz, sys, info)
+            info.particle_info[1].acceleration = Point(0.0, 0.0, 0.0)
+            info.particle_info[2].acceleration = Point(0.0, 0.0, 0.0)
+            ExTinyMD.update_acceleration!(interaction_short, cellq2d, sys, info)
+            ExTinyMD.update_acceleration!(interaction_long, sortz, sys, info)
             push!(force_x, info.particle_info[1].acceleration[1])
         end
         push!(Force_x, force_x)

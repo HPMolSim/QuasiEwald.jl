@@ -17,7 +17,7 @@ end
 
 Container{T}(n_atoms::TI) where {T<:Number, TI<:Integer} = Container{T}(zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(Complex{T}, n_atoms), zeros(Complex{T}, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms), zeros(T, n_atoms))
 
-function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords::Vector{Point{3, T}}) where {T<:Number, TI<:Integer}
+function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms::TI, L_z::T, coords) where {T<:Number, TI<:Integer}
     k_x, k_y, k = k_set
     for i in 1:n_atoms
         coord = coords[i]
@@ -33,24 +33,7 @@ function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms
     return nothing
 end
 
-function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
-    update_finder!(neighbor, info)
-
-    atoms = sys.atoms
-    
-    for i in 1:length(interaction.q)
-        interaction.q[i] = atoms[info.particle_info[i].id].charge
-        interaction.coords[i] = info.particle_info[i].position
-    end
-
-    if interaction.rbe == true
-        return energy_sum_sampling(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
-    else
-        return energy_sum_total(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
-    end
-end
-
-@inbounds function energy_k_sum_0(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
+@inbounds function energy_k_sum_0(q::Vector{T}, coords, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
     n_atoms = length(z_list)
 
     Q_1 = zeros(T, n_atoms)
@@ -73,7 +56,7 @@ end
     return 2 * sum_k_0
 end
 
-@inbounds function energy_k_sum(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, element::GreensElement{T}, container::Container{T}) where{T <: Number, TI<:Integer}
+@inbounds function energy_k_sum(k_set::NTuple{3, T}, q::Vector{T}, coords, z_list::Vector{TI}, element::GreensElement{T}, container::Container{T}) where{T <: Number, TI<:Integer}
     k_x, k_y, k = k_set
     L_z = element.L_z
 
@@ -90,7 +73,7 @@ end
     return (sum_1 + γ_1 * γ_2 * sum_2 + γ_1 * sum_3 + γ_2 * sum_4)
 end
 
-@inbounds function energy_k_sum_1(q::Vector{T}, k::T, z_list::Vector{TI}, coords::Vector{Point{3, T}}, container::Container{T}) where {T <: Number, TI <: Integer}
+@inbounds function energy_k_sum_1(q::Vector{T}, k::T, z_list::Vector{TI}, coords, container::Container{T}) where {T <: Number, TI <: Integer}
     n_atoms = length(z_list)
 
     EXP_P_list = container.EXP_P_list
@@ -241,7 +224,7 @@ end
 end
 
 
-function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
+function energy_sum_total(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -273,7 +256,7 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
 end
 
 # this is a function used to verify our summation method for the divergent cases, assume that γ_1 × γ_2 ≥ 1
-function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function energy_sum_total(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
     @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
@@ -321,7 +304,7 @@ function energy_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vec
     return - (sum_k0 + sum_smooth + sum_div) / (T(4) * L_x * L_y * ϵ_0)
 end
 
-function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
+function energy_sum_sampling(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}) where {T<:Number, TI<:Integer}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -343,7 +326,7 @@ function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::
     return - (sum_k0 + sum_total) / (T(4) * L_x * L_y * ϵ_0)
 end
 
-function energy_sum_sampling(q::Vector{T}, coords::Vector{Point{3, T}}, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
+function energy_sum_sampling(q::Vector{T}, coords, z_list::Vector{TI}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, rbe_p::TI, S::T, K_set::Vector{NTuple{3, T}}, ringangles::RingAngles{T}) where {T<:Number, TI<:Integer}
     @assert γ_1 * γ_2 ≥ one(T)
 
     n_atoms = size(coords)[1]
@@ -386,7 +369,7 @@ end
 
 # this are three function used to verify our summation method
 # they do the summation directly instead of by sorting
-function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T}
+function direct_sum_total(q::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T}
     n_atoms = size(coords)[1]
     L_x, L_y, L_z = L
 
@@ -411,7 +394,7 @@ function direct_sum_total(q::Vector{T}, coords::Vector{Point{3, T}}, L::NTuple{3
     return -(sum_k0 + sum_k) / (4 * L_x * L_y * ϵ_0)
 end
 
-function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3, T}}, element::GreensElement{T}) where {T<:Number}
+function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords, element::GreensElement{T}) where {T<:Number}
     n_atoms = size(coords)[1]
     γ_1 = element.γ_1
     γ_2 = element.γ_2
@@ -440,7 +423,7 @@ function direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords::Vector{Point{3,
     return sum_k
 end
 
-function direct_sum_k_0(q::Vector{T}, coords::Vector{Point{3, T}}) where{T}
+function direct_sum_k_0(q::Vector{T}, coords) where{T}
     n_atoms = size(coords)[1]
 
     # k = 0 part
@@ -452,4 +435,36 @@ function direct_sum_k_0(q::Vector{T}, coords::Vector{Point{3, T}}) where{T}
     end
 
     return sum_k0
+end
+# ============================================================================
+# Framework-free core query (Task 3). See the QuasiEwaldLongPlan docstring in
+# src/types.jl for why mass/coords/acceleration do not appear here.
+# ============================================================================
+
+"""
+    QuasiEwald.energy(plan::QuasiEwaldLongPlan, poses, charges; z_list = nothing) -> T
+
+Long-range (reciprocal-space) energy from plain array-of-structs positions
+and charges -- no ExTinyMD type constructed, neither argument mutated. Pass
+`z_list` (e.g. `sorter.z_list` from a [`ZSorter`](@ref) kept by the caller)
+to reuse an existing z-sort; otherwise one is computed fresh with
+`sortperm`.
+
+Dispatches exactly as the old ExTinyMD adapter (`QuasiEwald_El`) did: only
+`plan.rbe` selects sampling vs. direct summation over k-vectors. The
+ring-angle ("divergent", `γ_1*γ_2 ≥ 1`) correction is therefore reached only
+through the `rbe = true` path with `plan.k_0 > 0`'s sibling in force!, never
+here -- `QuasiEwald_El` never called the ringangles-taking `energy_sum_total`
+overload either, even when `plan.k_0 > 0`. That asymmetry between the energy
+and force paths predates this phase; it is preserved rather than "fixed" per
+the phase's own rule that a moved number is a finding, not a bug to
+silently correct.
+"""
+function energy(plan::QuasiEwaldLongPlan{T}, poses, charges; z_list = nothing) where {T}
+    zl = z_list === nothing ? sortperm([p[3] for p in poses]) : z_list
+    if plan.rbe
+        return energy_sum_sampling(charges, poses, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.rbe_p, plan.sum_k, plan.K_set)
+    else
+        return energy_sum_total(charges, poses, zl, plan.L, plan.γ_1, plan.γ_2, plan.ϵ_0, plan.α, plan.k_c)
+    end
 end

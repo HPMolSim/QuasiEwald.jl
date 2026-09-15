@@ -26,7 +26,7 @@
             accuracy = 1e-4
             α = 1.0
             k_c = sqrt(- 4 * α * log(accuracy))
-            r_c = (α * accuracy)^(-1/3) / 2
+            r_c = (α * accuracy)^(-1/3) / 2   # ≈ 10.77 < min(L_x,L_y)/2 = 50.0
             n_t = 30
             rbe_p = 50
 

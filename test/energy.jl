@@ -34,7 +34,7 @@
         accuracy = 1e-4
         α = 10.0
         # r_c = (α * accuracy)^(-1/3)
-        r_c = 4.5
+        r_c = 4.5   # r_c = 4.5 < min(Lx,Ly)/2 = 5.0
         k_c = sqrt(-4 * α * log(accuracy))
 
         sortz = SortingFinder(info)
