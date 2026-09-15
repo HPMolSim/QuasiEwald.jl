@@ -4,7 +4,13 @@ module QuasiEwald
 # [weakdeps] entry only (see Project.toml and ext/QuasiEwaldExTinyMDExt.jl).
 # This module has no ExTinyMD dependency at all -- everything below is plain
 # arrays and numbers.
-using LinearAlgebra, CellListMap, SpecialFunctions, GaussQuadrature, Distributions, Random, StaticArrays, StatsBase, Distributed
+# `CellListMap` and `Distributions` used to be listed here and were both
+# dead: this package never calls CellListMap at all (the only mention left is
+# a docstring, describing what a caller may pass as `neighbor_list`), and the
+# one sampling call in tools/Importance_sampling.jl -- `sample(K_set,
+# ProbabilityWeights(Prob), 1000)` -- comes from StatsBase, not Distributions.
+# `Distributed` IS live (`@distributed (+)` in force/force_long.jl).
+using LinearAlgebra, SpecialFunctions, GaussQuadrature, Random, StaticArrays, StatsBase, Distributed
 
 export IcmSys, GaussParameter, GreensElement
 export RBE_α
@@ -48,16 +54,60 @@ loaded automatically once `using ExTinyMD` has also been done -- calling
 these before that raises an informative error rather than a cryptic
 `UndefVarError`. For standalone use (no ExTinyMD, no MDSys), construct a
 plan directly and query it with `QuasiEwald.energy`/`force`/`force!`.
+
+!!! warning "Breaking change: these three names are functions, not types"
+    Before this package was decoupled from ExTinyMD, each of these was a
+    `struct`. They are now *dispatcher functions* that forward to the real
+    constructors in the extension, so:
+
+    * **Construction works unchanged.** `QuasiEwaldShortInteraction(γ_1, γ_2,
+      ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t)` returns exactly the
+      wrapper it always did, and it still `isa ExTinyMD.AbstractInteraction`.
+    * **Type-position uses do not work.** `x isa QuasiEwaldShortInteraction`,
+      an `::QuasiEwaldShortInteraction` annotation, a
+      `Vector{QuasiEwaldShortInteraction}` element type, and dispatching a
+      method on one all now raise
+      `TypeError: in isa, expected Type, got a value of type typeof(QuasiEwaldShortInteraction)`.
+
+    If you need the type itself, reach into the extension module:
+
+    ```julia
+    using QuasiEwald, ExTinyMD
+    ext = Base.get_extension(QuasiEwald, :QuasiEwaldExTinyMDExt)
+    x isa ext.QuasiEwaldShortInteraction        # works
+    ```
+
+    The type cannot be re-exported from this module under the same name,
+    because the exported name is what makes the constructor call resolve
+    without ExTinyMD being a hard dependency.
 """
 QuasiEwaldShortInteraction, QuasiEwaldLongInteraction, SortingFinder
+
+# ExTinyMD's PkgId, for telling "ExTinyMD was never loaded" apart from
+# "ExTinyMD is loaded but the extension did not come up". `Base.get_extension`
+# returns `nothing` in both cases, and reporting the second as the first sends
+# the user off to `using ExTinyMD` -- which they have already done -- while the
+# actual precompilation error has scrolled off the screen.
+const _EXTINYMD_PKGID = Base.PkgId(Base.UUID("fec76197-d59f-46dd-a0ed-76a83c21f7aa"), "ExTinyMD")
 
 for name in (:QuasiEwaldShortInteraction, :QuasiEwaldLongInteraction, :SortingFinder)
     @eval function $name(args...; kwargs...)
         ext = Base.get_extension(QuasiEwald, :QuasiEwaldExTinyMDExt)
         if ext === nothing
-            error($(string(name)) * " requires ExTinyMD to be loaded (`using ExTinyMD`) -- " *
-                  "it is defined by the QuasiEwaldExTinyMDExt package extension. For standalone " *
-                  "use, construct a QuasiEwaldShortPlan/QuasiEwaldLongPlan directly instead.")
+            if haskey(Base.loaded_modules, _EXTINYMD_PKGID)
+                error($(string(name)) * ": ExTinyMD is loaded, but QuasiEwald's " *
+                      "QuasiEwaldExTinyMDExt extension failed to load -- so `using ExTinyMD` " *
+                      "is not what is missing. This is almost always a precompilation error " *
+                      "inside the extension, reported as a `Error: Error during loading of " *
+                      "extension QuasiEwaldExTinyMDExt of QuasiEwald` warning that has since " *
+                      "scrolled past. Run `Base.retry_load_extensions()` to reproduce it, and " *
+                      "check for a version conflict between the loaded ExTinyMD and this " *
+                      "package's [compat] bound.")
+            else
+                error($(string(name)) * " requires ExTinyMD to be loaded (`using ExTinyMD`) -- " *
+                      "it is defined by the QuasiEwaldExTinyMDExt package extension. For standalone " *
+                      "use, construct a QuasiEwaldShortPlan/QuasiEwaldLongPlan directly instead.")
+            end
         end
         return getfield(ext, $(QuoteNode(name)))(args...; kwargs...)
     end

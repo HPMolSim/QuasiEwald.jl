@@ -4,9 +4,7 @@ authors = ["Xuanzhao Gao"]
 version = "0.3.0"
 
 [deps]
-CellListMap = "69e1c6dd-3888-40e6-b3c8-31ac5f578864"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
-Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 GaussQuadrature = "d54b0c1a-921d-58e0-8e36-89d8069c0969"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -39,8 +37,6 @@ QuasiEwaldExTinyMDExt = "ExTinyMD"
 ExTinyMD = {url = "https://github.com/HPMolSim/ExTinyMD.jl", rev = "main"}
 
 [compat]
-CellListMap = "0.10"
-Distributions = "0.25"
 ExTinyMD = "0.3"
 GaussQuadrature = "0.5"
 SpecialFunctions = "2.3"
