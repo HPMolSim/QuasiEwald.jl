@@ -83,7 +83,7 @@ end
 # ============================================================================
 
 """
-    QuasiEwald.energy(plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing) -> T
+    QuasiEwald.energy(plan::QuasiEwaldShortPlan, poses, charges; neighbor_list = nothing, single_mode = false) -> T
 
 Short-range (real-space) energy from plain array-of-structs positions and
 charges -- no ExTinyMD type constructed, neither argument mutated.
@@ -100,37 +100,45 @@ e.g. an in-plane-only cell list reporting `r = 0`).
 With no `neighbor_list`, every pair is tested directly (`O(n_atoms^2)`) --
 this plan owns no persistent cell list of its own; see the package README
 for why that trade was made.
+
+`single_mode = true` drops the Gaussian-screened part of every pair and
+self term (`Es_gauss`), leaving only the point contribution; it is forwarded
+verbatim to [`QuaisEwald_Es_pair`](@ref)/[`QuaisEwald_Es_self`](@ref). This
+is the same keyword the pre-decoupling `QuasiEwald_Es(interaction, neighbor,
+sys, info; single_mode = ...)` adapter exposed. The default, `false`, is the
+full short-range sum and the only setting that pairs with
+[`QuasiEwaldLongPlan`](@ref) to give the correct total energy.
 """
-function energy(plan::QuasiEwaldShortPlan{T}, poses, charges; neighbor_list = nothing) where {T}
+function energy(plan::QuasiEwaldShortPlan{T}, poses, charges; neighbor_list = nothing, single_mode::Bool = false) where {T}
     n_atoms = plan.n_atoms
     energy_short = zero(T)
     r_c_sq = plan.r_c^2
 
     if neighbor_list === nothing
         for i in 1:n_atoms, j in (i + 1):n_atoms
-            energy_short += _short_pair_energy(plan, poses, charges, i, j, r_c_sq)
+            energy_short += _short_pair_energy(plan, poses, charges, i, j, r_c_sq, single_mode)
         end
     else
         for pair in neighbor_list
             i, j = pair[1], pair[2]
-            energy_short += _short_pair_energy(plan, poses, charges, i, j, r_c_sq)
+            energy_short += _short_pair_energy(plan, poses, charges, i, j, r_c_sq, single_mode)
         end
     end
 
     for i in 1:n_atoms
         element = GreensElement(plan.γ_1, plan.γ_2, poses[i][3], plan.L[3], plan.α, plan.accuracy)
-        energy_short += QuaisEwald_Es_self(charges[i], plan.ϵ_0, element, plan.gauss_para)
+        energy_short += QuaisEwald_Es_self(charges[i], plan.ϵ_0, element, plan.gauss_para; single_mode = single_mode)
     end
 
     return energy_short
 end
 
 "Candidate-pair energy contribution, zero unless within `r_c_sq` after the true minimum-image correction."
-@inline function _short_pair_energy(plan::QuasiEwaldShortPlan{T}, poses, charges, i, j, r_c_sq::T) where {T}
+@inline function _short_pair_energy(plan::QuasiEwaldShortPlan{T}, poses, charges, i, j, r_c_sq::T, single_mode::Bool = false) where {T}
     coord_1, coord_2, ρ_sq = _min_image_q2d(poses[i], poses[j], plan.L)
     if ρ_sq ≥ r_c_sq
         return zero(T)
     end
     element = GreensElement(plan.γ_1, plan.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), plan.L[3], plan.α, plan.accuracy)
-    return QuaisEwald_Es_pair(charges[i], charges[j], plan.ϵ_0, element, plan.gauss_para)
+    return QuaisEwald_Es_pair(charges[i], charges[j], plan.ϵ_0, element, plan.gauss_para; single_mode = single_mode)
 end

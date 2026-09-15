@@ -421,14 +421,18 @@ function force_direct_sum_k(k_set::NTuple{3, T}, q::Vector{T}, coords, L_z::T, �
     return sum_direct
 end
 
+# Returns a FORCE, not an acceleration: mass-division moved out of this
+# package's core when it was decoupled from ExTinyMD (the caller, e.g. the
+# extension's `update_acceleration!`, divides). The local used to be named
+# `acceleration`, which outlived the change by one commit.
 function force_direct_sum_total(q::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, γ_2::T, ϵ_0::T, α::T, k_c::T) where {T<:Number}
     n_atoms = size(coords)[1]
 
-    acceleration = [SVector{3, T}(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
+    force = [SVector{3, T}(zero(T), zero(T), zero(T)) for i in 1:n_atoms]
 
     L_x, L_y, L_z = L
 
-    acceleration .+= force_direct_sum_k0(q, coords) ./ (2 * L_x * L_y * ϵ_0)
+    force .+= force_direct_sum_k0(q, coords) ./ (2 * L_x * L_y * ϵ_0)
 
     n_x_max = Int(round(k_c * L_x / T(2) * π, RoundUp))
     n_y_max = Int(round(k_c * L_y / T(2) * π, RoundUp))
@@ -442,12 +446,12 @@ function force_direct_sum_total(q::Vector{T}, coords, L::NTuple{3, T}, γ_1::T, 
             if k < k_c && k != 0
                 sum_k = force_direct_sum_k(k_set, q, coords, L_z, γ_1, γ_2)
                 β = γ_1 * γ_2 * exp(- 2 * k * L_z) - 1
-                acceleration .+= sum_k .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β))
+                force .+= sum_k .* (exp(- k*k / (4 * α)) / (2 * L_x * L_y * ϵ_0 * β))
             end
         end
     end
 
-    return acceleration
+    return force
 end
 
 # ============================================================================

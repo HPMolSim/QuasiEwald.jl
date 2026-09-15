@@ -200,6 +200,10 @@ Pure parameters -- no ExTinyMD dependency, nothing MD-specific. Query with
 [`QuasiEwald.force!`](@ref) against plain array-of-structs positions
 (`Vector{SVector{3,T}}` canonical, but anything supporting `p[1]`/`p[2]`/
 `p[3]` indexing works) and a plain charge vector.
+
+`r_c` must satisfy `r_c < min(Lx, Ly) / 2`; anything else throws an
+`ArgumentError` (the short-range sum uses the single nearest in-plane
+periodic image, which is only correct below half the box).
 """
 struct QuasiEwaldShortPlan{T, TI}
     γ_1::T
@@ -216,8 +220,26 @@ struct QuasiEwaldShortPlan{T, TI}
     gauss_para::GaussParameter{T}
 end
 
-QuasiEwaldShortPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, r_c::T, n_t::TI) where {T<:Number, TI<:Integer} =
-    QuasiEwaldShortPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t, GaussParameter(n_t))
+function QuasiEwaldShortPlan(γ_1::T, γ_2::T, ϵ_0::T, L::NTuple{3, T}, rbe::Bool, accuracy::T, α::T, n_atoms::TI, r_c::T, n_t::TI) where {T<:Number, TI<:Integer}
+    # `_min_image_q2d` returns the single nearest in-plane image, which is the
+    # only image inside the cutoff exactly when `r_c < min(Lx, Ly) / 2`. At or
+    # beyond half the box a second image is also within `r_c` and the
+    # short-range sum silently multiply-counts it: no exception, no warning,
+    # just a wrong number. This is the only place that can catch it for a
+    # standalone (no-ExTinyMD, no-CellListMap) caller, since nothing else in
+    # this package ever looks at the unit cell.
+    if !(r_c < min(L[1], L[2]) / 2)
+        throw(ArgumentError(
+            "QuasiEwaldShortPlan requires r_c < min(Lx, Ly) / 2, but got " *
+            "r_c = $r_c with (Lx, Ly) = ($(L[1]), $(L[2])), i.e. " *
+            "min(Lx, Ly) / 2 = $(min(L[1], L[2]) / 2). The quasi-2D " *
+            "short-range sum uses the single nearest in-plane periodic image, " *
+            "which is only the whole story below half the box; at or above it " *
+            "the sum multiply-counts images and the result is silently wrong. " *
+            "Reduce r_c, or enlarge Lx/Ly."))
+    end
+    return QuasiEwaldShortPlan{T, TI}(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, r_c, n_t, GaussParameter(n_t))
+end
 
 """
     QuasiEwaldLongPlan(γ_1, γ_2, ϵ_0, L, rbe, accuracy, α, n_atoms, k_c, rbe_p; Δk = ...)
@@ -285,6 +307,13 @@ function ZSorter(poses)
     z_coords = [p[3] for p in poses]
     return ZSorter(z_coords, sortperm(z_coords))
 end
+
+# The z-coordinates-only entry point the docstring above advertises. It used
+# to be documented but not defined, so the call landed on `ZSorter(poses)`
+# and raised `BoundsError: attempt to access Float64 at index [3]`. `copy` is
+# not optional: `update_sorter!` writes into `sorter.z_coords` in place, so
+# the sorter has to own its array rather than alias the caller's.
+ZSorter(z_coords::Vector{T}) where {T<:Number} = ZSorter(copy(z_coords), sortperm(z_coords))
 
 "Refresh `sorter` in place from the z-component of `poses` (no reallocation)."
 function update_sorter!(sorter::ZSorter, poses)
