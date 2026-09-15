@@ -146,8 +146,30 @@ function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, 
     end
 
     Fsr = - Fsr_point_1 + Fsr_point_2 + Fsr_gauss
-    Fsx = Fsr * (coord_1[1] - coord_2[1]) / ρ
-    Fsy = Fsr * (coord_1[2] - coord_2[2]) / ρ
+    # `Fsr` is the RADIAL magnitude; the in-plane components need the unit
+    # vector (dx, dy)/ρ. At ρ == 0 that is 0/0: `Fsr` itself vanishes there
+    # (every term carries either `besselj1(k*ρ)` or an explicit factor of ρ),
+    # so the quotient is NaN, not a genuine singularity. The limit is zero and
+    # approached linearly -- measured Fx = 1.088e-5, 1.088e-7, 1.088e-10,
+    # 1.088e-13 at dx = 1e-1, 1e-3, 1e-6, 1e-9 -- which is also what symmetry
+    # demands, since dx and dy are identically zero. Fsz is finite and
+    # continuous through ρ = 0 and is left alone.
+    #
+    # ρ == 0 is reachable and not exotic: any two particles sharing an (x, y)
+    # column, and any pair whose in-plane separation is an exact multiple of
+    # Lx or Ly (so the minimum image wraps to zero) -- i.e. any lattice or
+    # grid initialisation. Before this package was decoupled, ExTinyMD's
+    # `position_checkQ2D` returned its all-zero sentinel for such a pair and
+    # every caller's `iszero(ρ_sq)` guard skipped it, which masked this by
+    # dropping the pair's real z-force too. The explicit `ρ_sq ≥ r_c^2` test
+    # that replaced the sentinel keeps the pair, so the guard has to be here.
+    if iszero(ρ)
+        Fsx = zero(T)
+        Fsy = zero(T)
+    else
+        Fsx = Fsr * (coord_1[1] - coord_2[1]) / ρ
+        Fsy = Fsr * (coord_1[2] - coord_2[2]) / ρ
+    end
     
     # about the force in z direction
     Fsz_point_1 = Gauss_int_Tuple(Fsz_point_core, gauss_para, element, region = (zero(T), k_f2)) .+ Fsz_point_core(element)

@@ -129,4 +129,120 @@
             end
         end
     end
+
+    # ------------------------------------------------------------------------
+    # Regression test for the ρ = 0 NaN (finding F1).
+    #
+    # `QuasiEwald_Fs_pair` builds the in-plane force from the RADIAL magnitude
+    # `Fsr` times the unit vector (dx, dy)/ρ. At ρ == 0 that is 0/0: `Fsr`
+    # itself vanishes there, so the unguarded quotient is NaN rather than a
+    # genuine singularity. One NaN then propagates through the whole force
+    # array and the whole trajectory, silently.
+    #
+    # Before the decoupling, ExTinyMD's `position_checkQ2D` returned its
+    # all-zero sentinel for such a pair and every caller's `iszero(ρ_sq)`
+    # guard skipped it -- which masked this by dropping the pair's real
+    # z-force too. The explicit `ρ_sq ≥ r_c^2` test that replaced the
+    # sentinel keeps the pair, so the guard has to live in the kernel.
+    #
+    # This asserts VALUES, not just `!isnan`: the in-plane components must be
+    # exactly zero (symmetry: dx and dy are identically zero) and the
+    # z-component must equal the dx -> 0 limit of the same configuration.
+    # ------------------------------------------------------------------------
+    @testset "ρ = 0 gives finite, correct forces (F1 regression)" begin
+        L3 = (10.0, 10.0, 10.0)
+        sp0 = QuasiEwaldShortPlan(0.4, 0.5, 1.0, L3, false, 1e-4, 10.0, 2, 4.5, 30)
+        # r_c = 4.5 < min(Lx, Ly) / 2 = 5.0
+        c2 = [1.0, -1.0]
+
+        # Reference values, measured on the fixed code and independently
+        # confirmed below against the dx -> 0 limit of the same pair.
+        Fz_ref = 0.0001689588779540122
+        E_ref = -0.4461255053088635
+
+        # All three ways ρ = 0 arises. The minimum image reduces every one of
+        # them to the same (ρ = 0, z_i = 2, z_j = 5) GreensElement, so all
+        # three must give the identical answer.
+        cases = (
+            # (a) an exact (x, y) column -- what any lattice/column
+            #     initialisation of a confined slab produces.
+            ("shared (x, y) column", [SVector(3.0, 4.0, 2.0), SVector(3.0, 4.0, 5.0)]),
+            # (b) in-plane separation an exact multiple of Lx, so the minimum
+            #     image wraps to exactly zero.
+            ("Δx = Lx (wraps to 0)", [SVector(3.0, 4.0, 2.0), SVector(13.0, 4.0, 5.0)]),
+            ("Δx = -Lx (wraps to 0)", [SVector(3.0, 4.0, 2.0), SVector(-7.0, 4.0, 5.0)]),
+            # (c) the same for Ly.
+            ("Δy = Ly (wraps to 0)", [SVector(3.0, 4.0, 2.0), SVector(3.0, 14.0, 5.0)]),
+        )
+
+        for (label, poses0) in cases
+            @testset "$label" begin
+                F0 = QuasiEwald.force(sp0, poses0, c2)
+                E0 = QuasiEwald.energy(sp0, poses0, c2)
+
+                # Finiteness first: this is what regressed (NaN, not Inf).
+                @test all(isfinite, (F0[1]..., F0[2]...))
+                @test isfinite(E0)
+
+                # In-plane components are *exactly* zero, not merely small:
+                # dx and dy are identically zero, so symmetry admits no other
+                # answer, and the guard sets them to `zero(T)`.
+                @test F0[1][1] === 0.0
+                @test F0[1][2] === 0.0
+                @test F0[2][1] === 0.0
+                @test F0[2][2] === 0.0
+
+                # The z-component is finite and continuous through ρ = 0 and
+                # must be left alone by the guard -- dropping the pair (the
+                # pre-branch behaviour) would give 0 here instead.
+                @test F0[1][3] ≈ Fz_ref rtol = 1e-12
+                @test F0[2][3] ≈ -0.00015341820374866757 rtol = 1e-12
+                @test !iszero(F0[1][3])
+                @test E0 ≈ E_ref rtol = 1e-12
+            end
+        end
+
+        # The dx -> 0 limit, computed independently of the ρ = 0 branch: only
+        # dx > 0 configurations, which never reach the guard at all.
+        @testset "ρ = 0 force agrees with the dx -> 0 limit" begin
+            Fx_over_dx = Float64[]
+            Fz_limit = 0.0
+            for dx in (1e-1, 1e-2, 1e-3, 1e-6, 1e-9)
+                poses_dx = [SVector(3.0, 4.0, 2.0), SVector(3.0 + dx, 4.0, 5.0)]
+                Fdx = QuasiEwald.force(sp0, poses_dx, c2)
+                push!(Fx_over_dx, Fdx[1][1] / dx)
+                Fz_limit = Fdx[1][3]
+            end
+
+            # F_x vanishes LINEARLY in dx: F_x/dx is constant to 5 digits over
+            # eight decades (measured 1.082565e-4, 1.088292e-4, 1.088349e-4,
+            # 1.088350e-4, 1.088350e-4 at dx = 1e-1, 1e-2, 1e-3, 1e-6, 1e-9).
+            # So the limit is 0, which is what the guard returns.
+            @test Fx_over_dx[end] ≈ Fx_over_dx[end - 1] rtol = 1e-6
+            @test Fx_over_dx[end] ≈ 1.088350e-4 rtol = 1e-5
+            # and the raw F_x itself really does go to zero:
+            @test abs(Fx_over_dx[end] * 1e-9) < 1e-12
+
+            # F_z is smooth and even in dx, so F_z(dx) - F_z(0) = O(dx^2);
+            # at dx = 1e-9 that correction is ~1e-18 relative, far below the
+            # tolerance below (measured: bitwise equal in Float64).
+            @test Fz_limit ≈ Fz_ref rtol = 1e-12
+
+            poses_zero = [SVector(3.0, 4.0, 2.0), SVector(3.0, 4.0, 5.0)]
+            @test QuasiEwald.force(sp0, poses_zero, c2)[1][3] ≈ Fz_limit rtol = 1e-12
+        end
+
+        # The original F1 reproduction: a third, well-separated particle must
+        # not be contaminated -- a single NaN in the pair would propagate.
+        @testset "a coincident pair does not poison the rest of the array" begin
+            sp3 = QuasiEwaldShortPlan(0.4, 0.5, 1.0, L3, false, 1e-4, 10.0, 3, 4.5, 30)
+            poses3 = [SVector(2.0, 3.0, 2.0), SVector(2.0, 3.0, 5.0), SVector(7.0, 8.0, 4.0)]
+            c3 = [1.0, -1.0, 1.0]
+            F3 = QuasiEwald.force(sp3, poses3, c3)
+            @test all(isfinite, (F3[1]..., F3[2]..., F3[3]...))
+            @test isfinite(QuasiEwald.energy(sp3, poses3, c3))
+            @test F3[1][1] === 0.0 && F3[1][2] === 0.0
+            @test F3[2][1] === 0.0 && F3[2][2] === 0.0
+        end
+    end
 end
