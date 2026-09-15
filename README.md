@@ -41,7 +41,8 @@ accuracy = 1e-4
 α = 1.0
 r_c = 4.5                    # r_c must be < min(Lx, Ly) / 2 = 50.0 here
 k_c = sqrt(-4 * α * log(accuracy))
-n_t = 30
+n_t = 100                    # 30 suffices for energies but not for the
+                             # short-range z-force -- see the note below
 
 short_plan = QuasiEwaldShortPlan(γ_1, γ_2, ϵ_0, L, false, accuracy, α, n, r_c, n_t)
 long_plan  = QuasiEwaldLongPlan(γ_1, γ_2, ϵ_0, L, false, accuracy, α, n, k_c, 0)
@@ -70,6 +71,24 @@ A few things worth knowing:
   at most one periodic image per axis; anything ≥ half the box breaks that
   and is not supported.
 - Neither `poses` nor `charges` is ever mutated by a query.
+- **`accuracy` and `n_t` must be tightened together when you care about
+  forces.** `accuracy` sets where the k-space integrals are truncated; `n_t`
+  sets the Gauss quadrature order over that interval. Raising `accuracy`
+  alone makes the short-range **z**-force *worse*, not better, because a
+  tighter truncation widens the interval that a fixed-order rule has to
+  cover. Measured max `|F_z - (-dE/dz)|` for a 6-particle configuration:
+
+  | `n_t` \ `accuracy` | `1e-4` | `1e-6` | `1e-8` | `1e-10` |
+  |---|---|---|---|---|
+  | 30  | 5.7e-6 | 7.5e-6 | 2.0e-5 | 3.8e-5 |
+  | 60  | 6.3e-6 | 6.5e-8 | 4.1e-9 | 1.5e-8 |
+  | 100 | 6.3e-6 | 6.5e-8 | 8.6e-10 | 1.4e-10 |
+  | 400 | 6.3e-6 | 6.5e-8 | 8.6e-10 | 1.4e-10 |
+
+  With `n_t` converged (≳ 100 here) the force error tracks `accuracy` at
+  roughly `60 × accuracy`. `n_t = 30` is enough for energies but not for the
+  z-derivative. The energy and the in-plane force components are far less
+  sensitive to `n_t` than the z-force is.
 - `QuasiEwaldShortPlan.energy`/`force`/`force!` accept an optional
   `neighbor_list =` keyword (candidate `(i, j, ...)` pairs -- e.g. a
   `CellListMap` neighbor list you already maintain); the true in-plane

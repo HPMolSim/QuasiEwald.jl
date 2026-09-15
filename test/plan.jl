@@ -81,7 +81,33 @@
         rng2 = Random.MersenneTwister(4)
         p = [SVector(L * rand(rng2), L * rand(rng2), 1.0 + 8.0 * rand(rng2)) for _ in 1:n]
         c = [isodd(i) ? 1.0 : -1.0 for i in 1:n]
-        γ_1, γ_2, ϵ_0, accuracy, α, r_c, n_t = 0.4, 0.5, 1.0, 1e-4, 10.0, 4.5, 30
+        # accuracy = 1e-8 and n_t = 100, rather than the 1e-4 / n_t = 30 used
+        # elsewhere in this file, and the reason is the whole point of this test.
+        # The short-range z-force is the one component that needs BOTH knobs
+        # tightened, and they are not independent:
+        #
+        #   * `accuracy` sets where the k-space integrals are truncated. The
+        #     resulting error floor is ~60 * accuracy.
+        #   * `n_t` sets the Gauss quadrature order over that interval.
+        #
+        # Tightening `accuracy` ALONE makes the z-force worse, not better,
+        # because a tighter truncation widens the interval that a fixed-order
+        # rule has to cover. Measured max |F_z - (-dE/dz)| on this exact 6-particle
+        # configuration:
+        #
+        #       n_t \ acc    1e-4      1e-6      1e-8     1e-10
+        #       30         5.7e-6    7.5e-6    2.0e-5    3.8e-5   <- diverges
+        #       60         6.3e-6    6.5e-8    4.1e-9    1.5e-8
+        #       100        6.3e-6    6.5e-8    8.6e-10   1.4e-10
+        #       400        6.3e-6    6.5e-8    8.6e-10   1.4e-10  <- converged
+        #
+        # So n_t = 30 (this file's default elsewhere) is simply not a converged
+        # quadrature for the z-derivative, and at n_t >= 100 the error tracks
+        # `accuracy` as it should. There is no formula defect in Fsz_point_core /
+        # Fsz_gauss_core / dz_Gamma_* -- an earlier draft of this test excluded the
+        # short-range z-component on the theory that there was one; the sweep above
+        # is what settled it. With both knobs set, no component needs excluding.
+        γ_1, γ_2, ϵ_0, accuracy, α, r_c, n_t = 0.4, 0.5, 1.0, 1e-8, 10.0, 4.5, 100
         k_c = sqrt(-4 * α * log(accuracy))
         sp = QuasiEwaldShortPlan(γ_1, γ_2, ϵ_0, (L, L, Lz), false, accuracy, α, n, r_c, n_t)
         lp = QuasiEwaldLongPlan(γ_1, γ_2, ϵ_0, (L, L, Lz), false, accuracy, α, n, k_c, 0)
@@ -98,14 +124,8 @@
                 Ep = QuasiEwald.energy(plan, pp, c)
                 Em = QuasiEwald.energy(plan, pm, c)
                 fd = -(Ep - Em) / (2h)
-                # The short-range z-component is excluded here: even the
-                # pristine, pre-Phase-3 Fsz formula does not satisfy
-                # F_z = -dE/dz to FD precision (confirmed present before this
-                # phase touched anything, via `git stash`; see the report).
-                # x, y, and the entire long-range plan all match tightly.
-                if !(plan === sp && d == 3)
-                    @test isapprox(fd, F[i][d], atol = 1e-6, rtol = 1e-3)
-                end
+                # No component is excluded: every plan, every direction.
+                @test isapprox(fd, F[i][d], atol = 1e-8, rtol = 1e-3)
             end
         end
     end
