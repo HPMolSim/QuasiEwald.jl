@@ -15,4 +15,5 @@ using Random
     include("simulate.jl")
     include("plan.jl")
     include("adapter.jl")
+    include("standalone.jl")
 end
