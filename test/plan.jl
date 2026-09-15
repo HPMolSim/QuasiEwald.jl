@@ -245,4 +245,87 @@
             @test F3[2][1] === 0.0 && F3[2][2] === 0.0
         end
     end
+    # ------------------------------------------------------------------------
+    # r_c validation (finding F8). Nothing outside this constructor can catch
+    # an out-of-range cutoff for a standalone caller: the core never calls
+    # CellListMap, so CellListMap 0.10's `UNIT CELL CHECK FAILED` backstop --
+    # the only thing that used to complain -- is never reached.
+    # ------------------------------------------------------------------------
+    @testset "QuasiEwaldShortPlan rejects r_c >= min(Lx, Ly) / 2 (F8)" begin
+        Lbox = (10.0, 12.0, 10.0)   # min(Lx, Ly) / 2 = 5.0
+        mk(r_c) = QuasiEwaldShortPlan(0.4, 0.5, 1.0, Lbox, false, 1e-4, 10.0, 4, r_c, 30)
+
+        @test mk(4.999) isa QuasiEwaldShortPlan     # just inside: accepted
+        @test_throws ArgumentError mk(5.0)          # exactly half: rejected
+        @test_throws ArgumentError mk(6.0)
+        @test_throws ArgumentError mk(50.0)
+
+        # min(), not Lx: a short Ly must bind even when Lx is generous.
+        @test_throws ArgumentError QuasiEwaldShortPlan(0.4, 0.5, 1.0, (100.0, 4.0, 10.0), false, 1e-4, 10.0, 4, 4.5, 30)
+
+        # The message must name the offending values, so the user does not
+        # have to guess which of r_c / Lx / Ly to change.
+        msg = try
+            mk(6.0)
+            ""
+        catch e
+            sprint(showerror, e)
+        end
+        @test occursin("6.0", msg)
+        @test occursin("10.0", msg)
+        @test occursin("5.0", msg)
+    end
+    # ------------------------------------------------------------------------
+    # `single_mode` reachability (finding F9). The deleted
+    # `QuasiEwald_Es(interaction, neighbor, sys, info; single_mode = false)`
+    # adapter was the only top-level exposure of this keyword; the kernels
+    # still took it but no plan query forwarded it, so the capability was
+    # unreachable. It is now a kwarg on the short-plan energy/force/force!.
+    # ------------------------------------------------------------------------
+    @testset "single_mode is forwarded to the short-range kernels (F9)" begin
+        n = 8
+        rng3 = Random.MersenneTwister(1234)
+        p3 = [SVector(L * rand(rng3), L * rand(rng3), 1.0 + 8.0 * rand(rng3)) for _ in 1:n]
+        c3 = [isodd(i) ? 1.0 : -1.0 for i in 1:n]
+        γ_1, γ_2, ϵ_0, accuracy, α, r_c, n_t = 0.4, 0.5, 1.0, 1e-4, 10.0, 4.5, 30
+        sp1 = QuasiEwaldShortPlan(γ_1, γ_2, ϵ_0, (L, L, Lz), false, accuracy, α, n, r_c, n_t)
+
+        E_full = QuasiEwald.energy(sp1, p3, c3)
+        E_single = QuasiEwald.energy(sp1, p3, c3; single_mode = true)
+        F_full = QuasiEwald.force(sp1, p3, c3)
+        F_single = QuasiEwald.force(sp1, p3, c3; single_mode = true)
+
+        # It must actually change the answer -- otherwise the kwarg is being
+        # swallowed somewhere rather than forwarded.
+        @test isfinite(E_single)
+        @test !isapprox(E_full, E_single; rtol = 1e-6)
+        @test any(!isapprox(F_full[i][d], F_single[i][d]; rtol = 1e-6) for i in 1:n, d in 1:3)
+
+        # The default is unchanged, so no existing caller moves.
+        @test QuasiEwald.energy(sp1, p3, c3; single_mode = false) == E_full
+        @test QuasiEwald.force(sp1, p3, c3; single_mode = false) == F_full
+
+        # And it reaches the kernels, not merely *a* different branch: rebuild
+        # the whole short-range sum by hand from QuaisEwald_Es_pair/_self with
+        # single_mode = true and require exact agreement.
+        E_hand = 0.0
+        for i in 1:n, j in (i + 1):n
+            dx = p3[i][1] - p3[j][1]; dx -= L * round(dx / L)
+            dy = p3[i][2] - p3[j][2]; dy -= L * round(dy / L)
+            ρ_sq = dx^2 + dy^2
+            ρ_sq ≥ r_c^2 && continue
+            el = GreensElement(γ_1, γ_2, p3[i][3], p3[j][3], sqrt(ρ_sq), Lz, α, accuracy)
+            E_hand += QuaisEwald_Es_pair(c3[i], c3[j], ϵ_0, el, sp1.gauss_para; single_mode = true)
+        end
+        for i in 1:n
+            el = GreensElement(γ_1, γ_2, p3[i][3], Lz, α, accuracy)
+            E_hand += QuaisEwald_Es_self(c3[i], ϵ_0, el, sp1.gauss_para; single_mode = true)
+        end
+        @test E_single == E_hand
+
+        # force! takes it too, and agrees with the allocating form.
+        Fbuf = [SVector(0.0, 0.0, 0.0) for _ in 1:n]
+        QuasiEwald.force!(Fbuf, sp1, p3, c3; single_mode = true)
+        @test Fbuf == F_single
+    end
 end
