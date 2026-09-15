@@ -52,15 +52,65 @@
     # specifications turned out to be tests that passed for the wrong
     # reason; this is the one most at risk of that, so it is asserted
     # against directly rather than assumed.
+    #
+    # `@test !success(proc)` alone is NOT enough, and that is the whole point:
+    # it is true for any non-zero exit -- ExTinyMD missing from the test
+    # environment, an unsatisfiable resolve, a failed precompile, a typo in
+    # the heredoc. Every one of those would make this check pass while proving
+    # nothing about whether the `@assert` on `Base.loaded_modules` is
+    # load-bearing. So the subprocess's streams are captured and the failure
+    # is pinned to the intended cause: a marker printed after `using` and
+    # before the assert must appear on stdout (so the loads all succeeded),
+    # the marker after the assert must NOT appear (so the assert is what
+    # stopped it), and stderr must carry the AssertionError naming the guard's
+    # own expression.
     script_contaminated = """
     using ExTinyMD, QuasiEwald, StaticArrays
+    print("LOADS_OK;")
     @assert !haskey(Base.loaded_modules, Base.PkgId(
         Base.UUID("fec76197-d59f-46dd-a0ed-76a83c21f7aa"), "ExTinyMD"))
-    print("OK")
+    print("ASSERT_DID_NOT_TRIP;")
     """
+    outfile, errfile = tempname(), tempname()
     proc = run(pipeline(
         `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script_contaminated`;
-        stdout = devnull, stderr = devnull), wait = false)
+        stdout = outfile, stderr = errfile), wait = false)
     wait(proc)
-    @test !success(proc)   # the @assert must trip -- confirms the guard is load-bearing
+    out_text = read(outfile, String)
+    err_text = read(errfile, String)
+    rm(outfile, force = true)
+    rm(errfile, force = true)
+
+    @test !success(proc)
+    # `using ExTinyMD, QuasiEwald, StaticArrays` really did succeed, so the
+    # non-zero exit is not a missing package, a resolve failure or a
+    # precompilation error.
+    @test occursin("LOADS_OK;", out_text)
+    # and execution stopped at the assert, not after it.
+    @test !occursin("ASSERT_DID_NOT_TRIP;", out_text)
+    # and it stopped for exactly the intended reason.
+    @test occursin("AssertionError", err_text)
+    @test occursin("loaded_modules", err_text)
+
+    # The dispatcher's two error cases (finding F6b). `Base.get_extension`
+    # returns `nothing` both when ExTinyMD was never loaded and when it IS
+    # loaded but the extension failed to precompile; reporting the second as
+    # the first tells the user to run a `using` they have already run, while
+    # the real error has scrolled past. Only the first case is reachable from
+    # a test (the second needs a deliberately broken extension), so it is the
+    # one asserted -- with the "loaded but the extension failed" wording
+    # explicitly excluded, which is what pins the branch.
+    script_no_extinymd = """
+    using QuasiEwald
+    try
+        QuasiEwaldShortInteraction(0.4, 0.5, 1.0, (10.0, 10.0, 10.0), false, 1e-4, 1.0, 2, 4.5, 30)
+        print("NO_ERROR")
+    catch e
+        print(sprint(showerror, e))
+    end
+    """
+    msg = read(`$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script_no_extinymd`, String)
+    @test occursin("requires ExTinyMD to be loaded", msg)
+    @test occursin("QuasiEwaldExTinyMDExt", msg)
+    @test !occursin("retry_load_extensions", msg)   # that is the *other* branch
 end
