@@ -14,4 +14,5 @@ using Random
     include("energy_long.jl")
     include("simulate.jl")
     include("plan.jl")
+    include("adapter.jl")
 end

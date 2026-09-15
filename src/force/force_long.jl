@@ -1,39 +1,3 @@
-function QuasiEwald_Fl!(interaction::QuasiEwaldLongInteraction{T, TI}, neighborfinder::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
-
-    atoms = sys.atoms
-
-    for i in 1:length(interaction.q)
-        interaction.q[i] = atoms[info.particle_info[i].id].charge
-        interaction.mass[i] = atoms[info.particle_info[i].id].mass
-        p = info.particle_info[i].position
-        interaction.coords[i] = SVector{3, T}(p[1], p[2], p[3])
-    end
-
-    # interaction.acceleration is force scratch here (mass division happens below,
-    # once, after accumulation -- force_long_total!/force_long_sampling! no longer
-    # take a mass argument; see the plan-based force!/force core queries at the
-    # bottom of this file for the framework-free version of the same split).
-    erase_vector_of_point!(interaction.acceleration)
-
-    if interaction.rbe == true
-        if interaction.k_0 > 0
-            force_long_sampling!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set, interaction.ringangles)
-        else
-            force_long_sampling!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
-        end
-    else
-        force_long_total!(interaction.q, interaction.coords, interaction.acceleration, neighborfinder.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
-    end
-
-    for i in 1:length(interaction.acceleration)
-        f = interaction.acceleration[i]
-        m = interaction.mass[i]
-        info.particle_info[i].acceleration += Point(f[1] / m, f[2] / m, f[3] / m)
-    end
-
-    return nothing
-end
-
 function force_long_k!(k_set::NTuple{3, T}, q::Vector{T}, z_list::Vector{TI}, container::Container{T}, sum_temp, element::GreensElement{T}, coords) where {T <: Number, TI <: Integer}
     force_k_sum_1!(k_set, q, z_list, container, sum_temp, coords)
     force_k_sum_2!(k_set, q, z_list, container, sum_temp, element)

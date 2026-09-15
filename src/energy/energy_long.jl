@@ -33,24 +33,6 @@ function update_container!(container::Container{T}, k_set::NTuple{3, T}, n_atoms
     return nothing
 end
 
-function QuasiEwald_El(interaction::QuasiEwaldLongInteraction{T, TI}, neighbor::SortingFinder{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
-    update_finder!(neighbor, info)
-
-    atoms = sys.atoms
-    
-    for i in 1:length(interaction.q)
-        interaction.q[i] = atoms[info.particle_info[i].id].charge
-        p = info.particle_info[i].position
-        interaction.coords[i] = SVector{3, T}(p[1], p[2], p[3])
-    end
-
-    if interaction.rbe == true
-        return energy_sum_sampling(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.rbe_p, interaction.sum_k, interaction.K_set)
-    else
-        return energy_sum_total(interaction.q, interaction.coords, neighbor.z_list, interaction.L, interaction.γ_1, interaction.γ_2, interaction.ϵ_0, interaction.α, interaction.k_c)
-    end
-end
-
 @inbounds function energy_k_sum_0(q::Vector{T}, coords, z_list::Vector{TI}) where{T <: Number, TI<:Integer}
     n_atoms = length(z_list)
 

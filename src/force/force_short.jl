@@ -130,49 +130,6 @@ function Fsz_self_point_core( element::GreensElement{T}) where {T<:Number}
     return f_sz_p
 end
 
-function QuasiEwald_Fs!(interaction::QuasiEwaldShortInteraction{T, TI}, neighborfinder::CellListQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}) where {T<:Number, TI<:Integer}
-
-    atoms = sys.atoms
-    n_atoms = length(atoms)
-    psize = div(n_atoms, nprocs())
-    
-    accelerations = @distributed (+) for pid in 1:nprocs()
-        sum_temp = [SVector{3, T}(zero(T), zero(T), zero(T)) for _=1:n_atoms]
-        for k in (pid-1)*psize+1:min(pid*psize, n_atoms)
-            i, j, ρ0 = neighborfinder.neighbor_list[k]
-            id_i = info.particle_info[i].id
-            id_j = info.particle_info[j].id
-            coord_1, coord_2, ρ_sq = _min_image_q2d(info.particle_info[i].position, info.particle_info[j].position, interaction.L)
-            if ρ_sq ≥ interaction.r_c^2
-                nothing
-            else
-                element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
-                q_1 = atoms[id_i].charge
-                q_2 = atoms[id_j].charge
-                force_i, force_j = QuasiEwald_Fs_pair(q_1, q_2, interaction.ϵ_0, element, coord_1, coord_2, interaction.gauss_para)
-                sum_temp[i] += force_i / atoms[id_i].mass
-                sum_temp[j] += force_j / atoms[id_j].mass
-            end
-        end
-        sum_temp
-    end
-
-    for i in 1:n_atoms
-        a = accelerations[i]
-        info.particle_info[i].acceleration += Point(a[1], a[2], a[3])
-    end
-
-    for p_info in info.particle_info
-        id_i = p_info.id
-        element = GreensElement(interaction.γ_1, interaction.γ_2, p_info.position[3], interaction.L[3], interaction.α, interaction.accuracy)
-        q = atoms[p_info.id].charge
-        force_i = QuasiEwald_Fs_self(q, interaction.ϵ_0, element, interaction.gauss_para)
-
-        p_info.acceleration += Point(force_i[1], force_i[2], force_i[3]) / atoms[id_i].mass
-    end
-
-    return nothing
-end
 
 function QuasiEwald_Fs_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, coord_1, coord_2, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number
     k_f1 = maximum(element.k_f1)

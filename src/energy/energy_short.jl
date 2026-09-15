@@ -46,36 +46,6 @@ function Es_point_core(element::GreensElement{T}) where {T<:Number}
     return E_s_p
 end
 
-function QuasiEwald_Es(interaction::QuasiEwaldShortInteraction{T, TI}, neighbor::CellListQ2D{T, TI}, sys::MDSys{T}, info::SimulationInfo{T}; single_mode::Bool = false) where {T<:Number, TI<:Integer}
-
-    neighbor_list = neighbor.neighbor_list
-
-    energy_short = zero(T)
-    atoms = sys.atoms
-
-    for (i, j, ρ) in neighbor_list
-        id_i = info.particle_info[i].id
-        id_j = info.particle_info[j].id
-        coord_1, coord_2, ρ_sq = _min_image_q2d(info.particle_info[i].position, info.particle_info[j].position, interaction.L)
-        if ρ_sq ≥ interaction.r_c^2
-            nothing
-        else
-            element = GreensElement(interaction.γ_1, interaction.γ_2, coord_1[3], coord_2[3], sqrt(ρ_sq), interaction.L[3], interaction.α, interaction.accuracy)
-            q_1 = atoms[id_i].charge
-            q_2 = atoms[id_j].charge
-            energy_short += QuaisEwald_Es_pair(q_1, q_2, interaction.ϵ_0, element, interaction.gauss_para; single_mode = single_mode)
-        end
-    end
-
-    for p_info in info.particle_info
-        element = GreensElement(interaction.γ_1, interaction.γ_2, p_info.position[3], interaction.L[3], interaction.α, interaction.accuracy)
-        q = atoms[p_info.id].charge
-        energy_short += QuaisEwald_Es_self(q, interaction.ϵ_0, element, interaction.gauss_para; single_mode = single_mode)
-    end
-
-    return energy_short
-end
-
 function QuaisEwald_Es_pair(q_1::T, q_2::T, ϵ_0::T, element::GreensElement{T}, gauss_para::GaussParameter{T}; single_mode::Bool = false) where T<:Number
     k_f1 = maximum(element.k_f1)
     k_f2 = maximum(element.k_f2)
